@@ -16,6 +16,7 @@ def calcular_aceleracoes_numpy(posicoes, massas, G, eps):
     dist_sq = np.sum(dx**2, axis=-1)
     
     # 4. Denominador da gravidade suavizado pelo parâmetro epsilon
+    np.fill_diagonal(dist_sq, 1.0)  # Evitar divisão por zero na diagonal (auto-interação)
     denominador = (dist_sq + eps**2) ** 1.5
     
     # 5. Formatar a massa para broadcasting: shape (1, N, 1)
