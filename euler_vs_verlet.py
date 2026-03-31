@@ -29,7 +29,7 @@ vel_verlet_x = 0.0
 vel_verlet_y = 1.0
 
 dt = 0.05
-passos = 1000
+passos = 120
 
 # Listas para guardar o histórico de posições de cada método
 hist_euler_x = []
