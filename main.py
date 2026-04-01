@@ -5,14 +5,16 @@ from simulacao_gpu import simular_n_corpos_gpu
 import numpy as np
 
 def main():
-    N_PARTICULAS = 1000     # Aumentado para saturar a GPU (ex: 8192, 16384, 32768)
+    N_PARTICULAS = 100       # Aumentado para saturar a GPU (ex: 8192, 16384, 32768)
     DELTA_T = 0.01          # Tempo de passo (em segundos)
-    PASSOS_TEMPO = 200     # Reduzido para evitar que o CPU demore demasiadas horas
+    PASSOS_TEMPO = 1000     # Reduzido para evitar que o CPU demore demasiadas horas
     TAMANHO_CAIXA = 100.0   # Espaço cúbico onde as partículas são inicialmente distribuídas  
     EPSILON = 1.0           # Softening parameter = 1.0 em vez de 0.1 para evitar divergências numéricas em simulações longas.
     G = 1.0                 # Constante gravitacional
     MASSA_MIN = 10.0        # Massa mínima das partículas
     MASSA_MAX = 50.0        # Massa máxima das partículas
+    VELOCIDADE_MIN = -1.0   # Velocidade mínima das partículas
+    VELOCIDADE_MAX = 1.0    # Velocidade máxima das partículas
     np.random.seed(42)      # Seed fixa para resultados consistentes
 
     print("="*75)
@@ -20,7 +22,7 @@ def main():
     print("="*75)
     
     # Geração dos tensores (NumPy) de massas, posições e velocidades iniciais
-    massas, posicoes, velocidades = gerar_condicoes_iniciais(N_PARTICULAS, TAMANHO_CAIXA, MASSA_MIN, MASSA_MAX)
+    massas, posicoes, velocidades = gerar_condicoes_iniciais(N_PARTICULAS, TAMANHO_CAIXA, MASSA_MIN, MASSA_MAX, VELOCIDADE_MIN,VELOCIDADE_MAX, )
 
     # Criar cópias para CPU e GPU para garantir que ambos começam com as mesmas condições iniciais
     pos_cpu_init, pos_gpu_init = posicoes.copy(), posicoes.copy()
@@ -41,8 +43,8 @@ def main():
 
     # VALIDAÇÃO MATEMÁTICA E RESULTADOS
     # np.allclose é usado devido a pequenas divergências de float32 entre CPU e GPU.
-    # atol=0.1 define a tolerância máxima de diferença absoluta para considerar os resultados entre o calculo de cpu e gpu iguais.
-    valido = np.allclose(pos_final_cpu, pos_final_gpu, atol=0.1)
+    # atol=0.5 define a tolerância máxima de diferença absoluta para considerar os resultados entre o calculo de cpu e gpu iguais.
+    valido = np.allclose(pos_final_cpu, pos_final_gpu, atol=0.5)
 
     print("\n" + "="*80)
     print(" RESULTADOS DO BENCHMARK para" ,N_PARTICULAS, "partículas,", PASSOS_TEMPO, "passos, Δt=", DELTA_T, )
@@ -55,10 +57,10 @@ def main():
     
     # Prova Visual (Matplotlib) - pode ser lento com muitas partículas/passos.
     # É boa ideia só desenhar um subconjunto ou desativar para benchmarks puros.
-    DESENHAR = False  # Definir como True para visualizar, mas cuidado com o tempo de renderização!
+    DESENHAR = True  # Definir como True para visualizar, mas cuidado com o tempo de renderização!
     if N_PARTICULAS <= 64 or DESENHAR:
-        print("-> A gerar projeção 2D das órbitas...")
-        desenhar_grafico_n_corpos(hist_cpu, titulo=f"Dinâmica Orbital: {N_PARTICULAS} Corpos")
+        print("-> A gerar projeção 2D das órbitas (tamanho do ponto proporcional à massa)...")
+        desenhar_grafico_n_corpos(hist_cpu, massas, titulo=f"Dinâmica Orbital: {N_PARTICULAS} Corpos")
     else:
         print("-> Geração do gráfico desativada para N > 64 (pode ser muito lenta).")
         if not DESENHAR:

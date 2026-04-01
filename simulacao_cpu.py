@@ -41,7 +41,7 @@ def simular_n_corpos_cpu(pos, vel, massas, passos, dt, G, eps, callback_progress
     acel = calcular_aceleracoes_numpy(pos, massas, G, eps)
     
     # Calcular o intervalo para imprimir o progresso (ex: a cada 20%)
-    passo_progresso = max(1, passos // 5)
+    passo_progresso = max(1, passos // 100)
     
     for passo in range(passos):
         historico_posicoes[passo] = pos.copy()

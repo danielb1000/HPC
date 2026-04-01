@@ -1,18 +1,18 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-def gerar_condicoes_iniciais(N, tamanho_caixa=100.0, massa_min=10.0, massa_max=50.0):
+def gerar_condicoes_iniciais(N, tamanho_caixa=100.0, massa_min=10.0, massa_max=50.0,velocidade_min=-0.5 ,velocidade_max=0.5):
     """
     Gera as condições iniciais aleatórias para N partículas.
     Retorna arrays NumPy de massas, posições e velocidades (float32 para compatibilidade CUDA).
     """
     massas = np.random.uniform(massa_min, massa_max, N).astype(np.float32) # Massas random entre massa_min e massa_max
     posicoes = (np.random.rand(N, 3).astype(np.float32) * tamanho_caixa) - (tamanho_caixa / 2.0) # Posições random entre -tamanho_caixa/2 e +tamanho_caixa/2
-    velocidades = np.random.uniform(-0.5, 0.5, (N, 3)).astype(np.float32) # Velocidades random entre -0.5 e 0.5 
+    velocidades = np.random.uniform(velocidade_min, velocidade_max, (N, 3)).astype(np.float32) # Velocidades random entre velocidade_min e velocidade_max
     
     return massas, posicoes, velocidades
 
-def desenhar_grafico_n_corpos(historico_posicoes, titulo="Simulação N-Corpos"):
+def desenhar_grafico_n_corpos(historico_posicoes, massas, titulo="Simulação N-Corpos"):
     """
     Recebe um histórico de posições com shape (P, N, 3)
     e desenha o rasto em 2D projetando os eixos X e Y.
@@ -27,9 +27,9 @@ def desenhar_grafico_n_corpos(historico_posicoes, titulo="Simulação N-Corpos")
     for i in range(N):
         x = hist_np[:, i, 0] # Coordenada X da partícula i ao longo do tempo
         y = hist_np[:, i, 1] 
-        plt.plot(x, y, linewidth=0.5, alpha=0.7)
-        # Ponto final da órbita
-        plt.scatter(x[-1], y[-1], s=8)   
+        plt.plot(x, y, linewidth=1.2, alpha=0.7)
+        # Ponto final da órbita, com tamanho proporcional à massa
+        plt.scatter(x[-1], y[-1], s=massas[i] * 1.5)   
     plt.title(titulo)
     plt.xlabel("Coordenada X")
     plt.ylabel("Coordenada Y")
