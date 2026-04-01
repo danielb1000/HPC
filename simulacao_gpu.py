@@ -4,7 +4,7 @@ import numpy as np
 from pycuda.compiler import SourceModule
 import time
 
-# O teu código C++ exato
+# Falta comentar o codigo do GPU para saber onde posso melhorar a performance, e onde posso melhorar a legibilidade do codigo.
 kernel_code = """
 __global__ void pre_update(float *pos, float *vel, float *acel, float dt, int N) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;

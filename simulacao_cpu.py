@@ -30,7 +30,8 @@ def calcular_aceleracoes_numpy(posicoes, massas, G, eps):
 
 def simular_n_corpos_cpu(pos, vel, massas, passos, dt, G, eps, callback_progresso=None):
     """
-    Integra as equações de movimento usando o método Velocity Verlet de 2ª ordem.
+    Integra as equações de movimento usando o método Velocity Verlet.
+    Devolve o histórico de posições para visualização e validação em forma de um array (P, N, 3).
     """
     N = pos.shape[0]
     # Aloca array (P, N, 3) para guardar o histórico
@@ -39,8 +40,8 @@ def simular_n_corpos_cpu(pos, vel, massas, passos, dt, G, eps, callback_progress
     # Aceleração inicial (t=0)
     acel = calcular_aceleracoes_numpy(pos, massas, G, eps)
     
-    # Calcular o intervalo para imprimir o progresso (ex: de 10 em 10%)
-    passo_progresso = max(1, passos // 20)
+    # Calcular o intervalo para imprimir o progresso (ex: a cada 20%)
+    passo_progresso = max(1, passos // 5)
     
     for passo in range(passos):
         historico_posicoes[passo] = pos.copy()
