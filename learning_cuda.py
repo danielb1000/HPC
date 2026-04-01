@@ -2,6 +2,12 @@ import pycuda.autoinit
 import pycuda.driver as cuda
 import numpy as np
 from pycuda.compiler import SourceModule
+#
+#
+# Ficheiro básico de aprendizagem CUDA gerado por IA.
+# 
+#
+
 
 # O nosso código C++ puro que vai correr na GPU
 kernel_code = """

@@ -1,5 +1,11 @@
 import math
 import matplotlib.pyplot as plt
+#
+#
+# Ficheiro de código simples que compara o método de Euler padrão, Euler-Cromer e Velocity Verlet em uma órbita circular perfeita.
+# Utilizado no relatório para ilustrar a importância de escolher o método de integração correto em simulações de N-corpos.
+#
+#
 
 def calcular_aceleracao(pos_x, pos_y):
     # Massa central na origem (0,0). Constante GM = 1.0
