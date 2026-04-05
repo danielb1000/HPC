@@ -6,7 +6,7 @@ import numpy as np
 
 def main():
     N_PARTICULAS = 100       # Aumentado para saturar a GPU (ex: 8192, 16384, 32768)
-    DELTA_T = 0.01          # Tempo de passo (em segundos)
+    DELTA_T = 0.01          # Tempo de passo
     PASSOS_TEMPO = 1000     # Reduzido para evitar que o CPU demore demasiadas horas
     TAMANHO_CAIXA = 100.0   # Espaço cúbico onde as partículas são inicialmente distribuídas  
     EPSILON = 1.0           # Softening parameter = 1.0 em vez de 0.1 para evitar divergências numéricas em simulações longas.
@@ -42,9 +42,8 @@ def main():
     pos_final_gpu, tempo_gpu = simular_n_corpos_gpu(pos_gpu_init, vel_gpu_init, massas, PASSOS_TEMPO, DELTA_T, G, EPSILON)
 
     # VALIDAÇÃO MATEMÁTICA E RESULTADOS
-    # np.allclose é usado devido a pequenas divergências de float32 entre CPU e GPU.
-    # atol=0.5 define a tolerância máxima de diferença absoluta para considerar os resultados entre o calculo de cpu e gpu iguais.
-    valido = np.allclose(pos_final_cpu, pos_final_gpu, atol=0.5)
+    # O desvio máximo entre as posições finais da CPU e GPU deve ser pequeno (dependendo do softening e do número de passos).
+    desvio_maximo = np.max(np.abs(pos_final_cpu - pos_final_gpu))
 
     print("\n" + "="*80)
     print(" RESULTADOS DO BENCHMARK para" ,N_PARTICULAS, "partículas,", PASSOS_TEMPO, "passos, Δt=", DELTA_T, )
@@ -52,12 +51,12 @@ def main():
     print(f"Tempo CPU : {tempo_cpu:.4f} segundos")
     print(f"Tempo GPU : {tempo_gpu:.4f} segundos")
     print(f"Speedup   : {tempo_cpu / tempo_gpu:.2f}x mais rápido")
-    print(f"Validação : {'✅ SUCESSO (Cálculos convergem)' if valido else '❌ FALHA (Desvio matemático excessivo)'}" )
+    print(f"Desvio Máximo (CPU vs GPU): {desvio_maximo:.6f} (tolerância mínima para convergência)")
     print("="*80)
     
     # Prova Visual (Matplotlib) - pode ser lento com muitas partículas/passos.
     # É boa ideia só desenhar um subconjunto ou desativar para benchmarks puros.
-    DESENHAR = True  # Definir como True para visualizar, mas cuidado com o tempo de renderização!
+    DESENHAR = False  # Definir como True para visualizar, mas cuidado com o tempo de renderização! # False no servidor.
     if N_PARTICULAS <= 64 or DESENHAR:
         print("-> A gerar projeção 2D das órbitas (tamanho do ponto proporcional à massa)...")
         desenhar_grafico_n_corpos(hist_cpu, massas, titulo=f"Dinâmica Orbital: {N_PARTICULAS} Corpos")

@@ -1,5 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('Agg')
 
 def gerar_condicoes_iniciais(N, tamanho_caixa=100.0, massa_min=10.0, massa_max=50.0,velocidade_min=-0.5 ,velocidade_max=0.5):
     """
@@ -36,4 +38,4 @@ def desenhar_grafico_n_corpos(historico_posicoes, massas, titulo="Simulação N-
     plt.axis('equal')
     plt.grid(True, alpha=0.15) # O N aqui é o número de partículas extraído do shape
     plt.savefig(f"{N}_corpos_orbitas.png", dpi=300, pad_inches=0)
-    plt.show()
+    # plt.show()
