@@ -5,7 +5,7 @@ from simulacao_gpu import simular_n_corpos_gpu
 import numpy as np
 
 def main():
-    N_PARTICULAS = 100       # Aumentado para saturar a GPU (ex: 8192, 16384, 32768)
+    N_PARTICULAS = 101       # Aumentado para saturar a GPU (ex: 8192, 16384, 32768)
     DELTA_T = 0.01          # Tempo de passo
     PASSOS_TEMPO = 1000     # Reduzido para evitar que o CPU demore demasiadas horas
     TAMANHO_CAIXA = 100.0   # Espaço cúbico onde as partículas são inicialmente distribuídas  
