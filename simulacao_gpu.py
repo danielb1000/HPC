@@ -241,12 +241,48 @@ __global__ void post_update(float *vel, float *acel, float dt, int N) {
     }
 }
 
+__global__ void calcular_energia(float *pos, float *vel, float *massas, float *energia, int N, float G, float eps) {
+    // Kernel de diagnóstico para calcular a Energia Total (Cinética + Potencial) na GPU.
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+    if (i < N) {
+        // 1. Energia Cinética: 1/2 * m * v^2
+        float v_sq = vel[i*3 + 0]*vel[i*3 + 0] + vel[i*3 + 1]*vel[i*3 + 1] + vel[i*3 + 2]*vel[i*3 + 2];
+        float e_kin = 0.5f * massas[i] * v_sq;
+
+        // 2. Energia Potencial: soma( -G * m_i * m_j / r )
+        float e_pot = 0.0f;
+        float pos_i_x = pos[i*3 + 0];
+        float pos_i_y = pos[i*3 + 1];
+        float pos_i_z = pos[i*3 + 2];
+        float m_i = massas[i];
+
+        for (int j = 0; j < N; j++) {
+            if (i != j) {
+                float dx = pos[j*3 + 0] - pos_i_x;
+                float dy = pos[j*3 + 1] - pos_i_y;
+                float dz = pos[j*3 + 2] - pos_i_z;
+                float dist_sq = dx*dx + dy*dy + dz*dz;
+                
+                // rsqrtf calcula 1/sqrt(dist_sq), o que é exatamente 1/r
+                float inv_dist = rsqrtf(dist_sq + eps*eps); 
+                e_pot += -G * m_i * massas[j] * inv_dist;
+            }
+        }
+        // Como somamos todos os pares (i,j) e (j,i), a energia potencial está duplicada.
+        // Dividimos por 2 para obter o valor real.
+        e_pot *= 0.5f;
+
+        energia[i] = e_kin + e_pot;
+    }
+}
+
 """
 
 mod = SourceModule(kernel_code)
 pre_update_gpu = mod.get_function("pre_update")
 pre_update_float4_gpu = mod.get_function("pre_update_float4")
 post_update_gpu = mod.get_function("post_update")
+
 
 # Mapeamento de nomes de métodos para as funções de kernel compiladas.
 # Esta estrutura permite adicionar novas otimizações facilmente.
@@ -257,6 +293,37 @@ kernels_aceleracao = {
     "shared_mem": mod.get_function("calcular_aceleracoes_shared_mem"),
     "shared_mem_float4": mod.get_function("calcular_aceleracoes_shared_mem_float4"),
 }
+
+def validar_energia_gpu(pos, vel, massas, G, eps):
+    """
+    Executa o cálculo pesado de energia O(N^2) na GPU e devolve a Energia Total.
+    """
+    import numpy as np
+    N = pos.shape[0]
+    
+    pos_flat = pos.flatten().astype(np.float32)
+    vel_flat = vel.flatten().astype(np.float32)
+    massas_flat = massas.astype(np.float32)
+    energia_flat = np.zeros(N, dtype=np.float32)
+    
+    pos_gpu = cuda.mem_alloc(pos_flat.nbytes)
+    vel_gpu = cuda.mem_alloc(vel_flat.nbytes)
+    massas_gpu = cuda.mem_alloc(massas_flat.nbytes)
+    energia_gpu = cuda.mem_alloc(energia_flat.nbytes)
+    
+    cuda.memcpy_htod(pos_gpu, pos_flat)
+    cuda.memcpy_htod(vel_gpu, vel_flat)
+    cuda.memcpy_htod(massas_gpu, massas_flat)
+    
+    threads_por_bloco = 256
+    blocos_por_grid = int(np.ceil(N / threads_por_bloco))
+    
+    calcular_energia_kernel = mod.get_function("calcular_energia")
+    calcular_energia_kernel(pos_gpu, vel_gpu, massas_gpu, energia_gpu, np.int32(N), np.float32(G), np.float32(eps), block=(threads_por_bloco, 1, 1), grid=(blocos_por_grid, 1))
+    
+    cuda.memcpy_dtoh(energia_flat, energia_gpu)
+    
+    return np.sum(energia_flat) # O CPU faz apenas a soma final O(N)
 
 def simular_n_corpos_gpu(pos, vel, massas, passos, dt, G, eps, method: str = "naive"):
     N = pos.shape[0]
@@ -327,10 +394,13 @@ def simular_n_corpos_gpu(pos, vel, massas, passos, dt, G, eps, method: str = "na
 
     # Recuperar dados e formatar
     cuda.memcpy_dtoh(pos_flat, pos_gpu)
+    cuda.memcpy_dtoh(vel_flat, vel_gpu)
     
     if is_float4:
         pos_final = pos_flat.reshape((N, 4))[:, :3]
     else:
         pos_final = pos_flat.reshape((N, 3))
 
-    return pos_final, (fim_tempo - inicio_tempo)
+    vel_final = vel_flat.reshape((N, 3))
+
+    return pos_final, vel_final, (fim_tempo - inicio_tempo)

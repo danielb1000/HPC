@@ -1,7 +1,7 @@
 import time
 from utilidades import gerar_condicoes_iniciais, desenhar_grafico_n_corpos
 from simulacao_cpu import simular_n_corpos_cpu
-from simulacao_gpu import simular_n_corpos_gpu
+from simulacao_gpu import simular_n_corpos_gpu, validar_energia_gpu
 import numpy as np
 
 def main():
@@ -30,6 +30,11 @@ def main():
     pos_para_cpu = posicoes.copy()
     vel_para_cpu = velocidades.copy()
 
+    # -- 0. VALIDAÇÃO FÍSICA (GPU) --
+    # Usa a placa gráfica para calcular a energia O(N^2) inicial
+    print("[0/5] A calcular Energia Total Inicial na GPU...")
+    energia_inicial_gpu = validar_energia_gpu(posicoes, velocidades, massas, G, EPSILON)
+
     # -- 1. CPU SIMULAÇÃO --
     print("[1/5] A executar na CPU (NumPy)...")
 
@@ -42,19 +47,19 @@ def main():
     
     # -- 2. GPU SIMULAÇÃO (BASELINE (NAIVE)) --
     print("[2/5] A executar na GPU (PyCUDA - Baseline (Naive))...")
-    pos_final_gpu_naive, tempo_gpu_naive = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='naive')
+    pos_final_gpu_naive, vel_final_gpu_naive, tempo_gpu_naive = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='naive')
 
     # -- 3. GPU SIMULAÇÃO (NAIVE + FAST MATH) --
     print("[3/5] A executar na GPU (PyCUDA - Naive + Fast Math)...")
-    pos_final_gpu_naive_fm, tempo_gpu_naive_fm = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='naive_fast_math')
+    pos_final_gpu_naive_fm, vel_final_gpu_naive_fm, tempo_gpu_naive_fm = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='naive_fast_math')
 
     # -- 4. GPU SIMULAÇÃO (SHARED MEMORY + FAST MATH) --
     print("[4/5] A executar na GPU (PyCUDA - Shared Memory + Fast Math)...")
-    pos_final_gpu_opt, tempo_gpu_opt = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='shared_mem')
+    pos_final_gpu_opt, vel_final_gpu_opt, tempo_gpu_opt = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='shared_mem')
 
     # -- 5. GPU SIMULAÇÃO (SHARED MEMORY + FLOAT4 + FAST MATH) --
     print("[5/5] A executar na GPU (PyCUDA - Shared Mem + Float4 Vector + Fast Math)...")
-    pos_final_gpu_vec, tempo_gpu_vec = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='shared_mem_float4')
+    pos_final_gpu_vec, vel_final_gpu_vec, tempo_gpu_vec = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='shared_mem_float4')
 
     # VALIDAÇÃO MATEMÁTICA E RESULTADOS
     # O desvio máximo entre as posições finais da CPU e GPU deve ser pequeno (dependendo do softening e do número de passos).
@@ -62,6 +67,11 @@ def main():
     desvio_cpu_vs_gpu_naive_fm = np.max(np.abs(pos_final_cpu - pos_final_gpu_naive_fm))
     desvio_cpu_vs_gpu_opt = np.max(np.abs(pos_final_cpu - pos_final_gpu_opt))
     desvio_cpu_vs_gpu_vec = np.max(np.abs(pos_final_cpu - pos_final_gpu_vec))
+
+    # Usa a placa gráfica para calcular a energia final após a simulação otimizada
+    print("A calcular Energia Total Final na GPU...")
+    energia_final_gpu = validar_energia_gpu(pos_final_gpu_vec, vel_final_gpu_vec, massas, G, EPSILON)
+    erro_energia = abs((energia_final_gpu - energia_inicial_gpu) / energia_inicial_gpu) * 100
 
     print("\n" + "="*80)
     print(" RESULTADOS DO BENCHMARK para" ,N_PARTICULAS, "partículas,", PASSOS_TEMPO, "passos, Δt=", DELTA_T, )
@@ -87,6 +97,11 @@ def main():
     print(f"  - Tempo de execução      : {tempo_gpu_vec:.4f} segundos")
     print(f"  - Speedup vs CPU         : {tempo_cpu / tempo_gpu_vec:.2f}x mais rápido")
     print(f"  - Desvio numérico vs CPU : {desvio_cpu_vs_gpu_vec:.6f}")
+    print("="*80)
+    print(" VALIDAÇÃO FÍSICA (Conservação de Energia em CUDA)")
+    print(f"  - Energia Total Inicial  : {energia_inicial_gpu:.2f} J")
+    print(f"  - Energia Total Final    : {energia_final_gpu:.2f} J")
+    print(f"  - Erro de Conservação    : {erro_energia:.6f}%")
     print("="*80)
     
 
