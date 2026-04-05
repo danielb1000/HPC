@@ -5,7 +5,7 @@ from simulacao_gpu import simular_n_corpos_gpu
 import numpy as np
 
 def main():
-    N_PARTICULAS = 1000       # Aumentado para saturar a GPU (ex: 8192, 16384, 32768)
+    N_PARTICULAS = 500       # Aumentado para saturar a GPU (ex: 8192, 16384, 32768)
     DELTA_T = 0.01          # Tempo de passo
     PASSOS_TEMPO = 1000     # Reduzido para evitar que o CPU demore demasiadas horas
     TAMANHO_CAIXA = 100.0   # Espaço cúbico onde as partículas são inicialmente distribuídas  
@@ -31,7 +31,7 @@ def main():
     vel_para_cpu = velocidades.copy()
 
     # -- 1. CPU SIMULAÇÃO --
-    print("[1/4] A executar na CPU (NumPy)...")
+    print("[1/5] A executar na CPU (NumPy)...")
 
     inicio_cpu = time.perf_counter()
     # Para um benchmark de performance justo, chamamos a função com `guardar_historico=False`.
@@ -41,20 +41,25 @@ def main():
     pos_final_cpu = pos_para_cpu  # O resultado final está no array que foi passado e modificado.
     
     # -- 2. GPU SIMULAÇÃO (BASELINE (NAIVE)) --
-    print("[2/4] A executar na GPU (PyCUDA - Baseline (Naive))...")
+    print("[2/5] A executar na GPU (PyCUDA - Baseline (Naive))...")
     pos_final_gpu_naive, tempo_gpu_naive = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='naive')
 
-    # -- 3. GPU SIMULAÇÃO (OTIMIZADA) --
-    print("[3/4] A executar na GPU (PyCUDA - Otimizado com Shared Memory)...")
+    # -- 3. GPU SIMULAÇÃO (NAIVE + FAST MATH) --
+    print("[3/5] A executar na GPU (PyCUDA - Naive + Fast Math)...")
+    pos_final_gpu_naive_fm, tempo_gpu_naive_fm = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='naive_fast_math')
+
+    # -- 4. GPU SIMULAÇÃO (SHARED MEMORY + FAST MATH) --
+    print("[4/5] A executar na GPU (PyCUDA - Shared Memory + Fast Math)...")
     pos_final_gpu_opt, tempo_gpu_opt = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='shared_mem')
 
-    # -- 4. GPU SIMULAÇÃO (VECTOR TYPES) --
-    print("[4/4] A executar na GPU (PyCUDA - Memória de Banda Larga float4)...")
+    # -- 5. GPU SIMULAÇÃO (SHARED MEMORY + FLOAT4 + FAST MATH) --
+    print("[5/5] A executar na GPU (PyCUDA - Shared Mem + Float4 Vector + Fast Math)...")
     pos_final_gpu_vec, tempo_gpu_vec = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='shared_mem_float4')
 
     # VALIDAÇÃO MATEMÁTICA E RESULTADOS
     # O desvio máximo entre as posições finais da CPU e GPU deve ser pequeno (dependendo do softening e do número de passos).
     desvio_cpu_vs_gpu_naive = np.max(np.abs(pos_final_cpu - pos_final_gpu_naive))
+    desvio_cpu_vs_gpu_naive_fm = np.max(np.abs(pos_final_cpu - pos_final_gpu_naive_fm))
     desvio_cpu_vs_gpu_opt = np.max(np.abs(pos_final_cpu - pos_final_gpu_opt))
     desvio_cpu_vs_gpu_vec = np.max(np.abs(pos_final_cpu - pos_final_gpu_vec))
 
@@ -68,12 +73,17 @@ def main():
     print(f"  - Speedup vs CPU         : {tempo_cpu / tempo_gpu_naive:.2f}x mais rápido")
     print(f"  - Desvio numérico vs CPU : {desvio_cpu_vs_gpu_naive:.6f}")
     print("-" * 80)
-    print("GPU (Shared Memory):")
+    print("GPU (Naive + Fast Math):")
+    print(f"  - Tempo de execução      : {tempo_gpu_naive_fm:.4f} segundos")
+    print(f"  - Speedup vs CPU         : {tempo_cpu / tempo_gpu_naive_fm:.2f}x mais rápido")
+    print(f"  - Desvio numérico vs CPU : {desvio_cpu_vs_gpu_naive_fm:.6f}")
+    print("-" * 80)
+    print("GPU (Shared Memory + Fast Math):")
     print(f"  - Tempo de execução      : {tempo_gpu_opt:.4f} segundos")
     print(f"  - Speedup vs CPU         : {tempo_cpu / tempo_gpu_opt:.2f}x mais rápido")
     print(f"  - Desvio numérico vs CPU : {desvio_cpu_vs_gpu_opt:.6f}")
     print("-" * 80)
-    print("GPU (Float4 Vector):")
+    print("GPU (Shared Mem + Float4 + Fast Math):")
     print(f"  - Tempo de execução      : {tempo_gpu_vec:.4f} segundos")
     print(f"  - Speedup vs CPU         : {tempo_cpu / tempo_gpu_vec:.2f}x mais rápido")
     print(f"  - Desvio numérico vs CPU : {desvio_cpu_vs_gpu_vec:.6f}")

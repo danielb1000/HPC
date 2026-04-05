@@ -70,11 +70,37 @@ __global__ void calcular_aceleracoes_naive(float *pos, float *massas, float *ace
                 float dz = pos[j * 3 + 2] - pos_i_z;
                 float dist_sq = dx*dx + dy*dy + dz*dz;
 
-                // Otimização Possível: A função powf é computacionalmente cara.
-                // Para expoentes como 1.5, é muito mais rápido usar a instrução
-                // intrínseca rsqrtf (recíproca da raiz quadrada).
+                // Naive implementation: usa powf padrão de alta precisão, mas lento.
                 float denominador = powf(dist_sq + eps*eps, 1.5f);
                 float forca = (G * massas[j]) / denominador;
+                ax += forca * dx; ay += forca * dy; az += forca * dz;
+            }
+        }
+        acel[i * 3 + 0] = ax; acel[i * 3 + 1] = ay; acel[i * 3 + 2] = az;
+    }
+}
+
+/*
+Kernel Naive com otimização Fast Math (rsqrtf).
+Isola o ganho de performance puramente matemático antes de introduzir otimizações de memória.
+*/
+__global__ void calcular_aceleracoes_naive_fast_math(float *pos, float *massas, float *acel, int N, float G, float eps) {
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+    if (i < N) {
+        float ax = 0.0f, ay = 0.0f, az = 0.0f;
+        float pos_i_x = pos[i * 3 + 0];
+        float pos_i_y = pos[i * 3 + 1];
+        float pos_i_z = pos[i * 3 + 2];
+
+        for (int j = 0; j < N; j++) {
+            if (i != j) {
+                float dx = pos[j * 3 + 0] - pos_i_x;
+                float dy = pos[j * 3 + 1] - pos_i_y;
+                float dz = pos[j * 3 + 2] - pos_i_z;
+                float dist_sq = dx*dx + dy*dy + dz*dz;
+
+                float inv_dist = rsqrtf(dist_sq + eps*eps);
+                float forca = G * massas[j] * inv_dist * inv_dist * inv_dist;
                 ax += forca * dx; ay += forca * dy; az += forca * dz;
             }
         }
@@ -135,8 +161,8 @@ __global__ void calcular_aceleracoes_shared_mem(float *pos, float *massas, float
                     float dy = s_pos[j_tile * 3 + 1] - pos_i_y;
                     float dz = s_pos[j_tile * 3 + 2] - pos_i_z;
                     float dist_sq = dx*dx + dy*dy + dz*dz;
-                    float denominador = powf(dist_sq + eps*eps, 1.5f);
-                    float forca = (G * s_massas[j_tile]) / denominador;
+                    float inv_dist = rsqrtf(dist_sq + eps*eps);
+                    float forca = G * s_massas[j_tile] * inv_dist * inv_dist * inv_dist;
                     ax += forca * dx; ay += forca * dy; az += forca * dz;
                 }
             }
@@ -188,8 +214,8 @@ __global__ void calcular_aceleracoes_shared_mem_float4(float4 *pos_mass, float *
                 if (p_j.w > 0.0f && (tile_idx * blockDim.x + j_tile) != i) {
                     float dx = p_j.x - pos_i_x; float dy = p_j.y - pos_i_y; float dz = p_j.z - pos_i_z;
                     float dist_sq = dx*dx + dy*dy + dz*dz;
-                    float denominador = powf(dist_sq + eps*eps, 1.5f);
-                    float forca = (G * p_j.w) / denominador; // p_j.w é a massa!
+                    float inv_dist = rsqrtf(dist_sq + eps*eps);
+                    float forca = G * p_j.w * inv_dist * inv_dist * inv_dist; // p_j.w é a massa!
                     ax += forca * dx; ay += forca * dy; az += forca * dz;
                 }
             }
@@ -227,6 +253,7 @@ post_update_gpu = mod.get_function("post_update")
 # Basta adicionar um novo kernel C++ e mapear o seu nome aqui.
 kernels_aceleracao = {
     "naive": mod.get_function("calcular_aceleracoes_naive"),
+    "naive_fast_math": mod.get_function("calcular_aceleracoes_naive_fast_math"),
     "shared_mem": mod.get_function("calcular_aceleracoes_shared_mem"),
     "shared_mem_float4": mod.get_function("calcular_aceleracoes_shared_mem_float4"),
 }
