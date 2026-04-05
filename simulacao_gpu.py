@@ -23,6 +23,26 @@ __global__ void pre_update(float *pos, float *vel, float *acel, float dt, int N)
     }
 }
 
+__global__ void pre_update_float4(float4 *pos_mass, float *vel, float *acel, float dt, int N) {
+    // Versão do pre_update adaptada para o array empacotado float4.
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+    if (i < N) {
+        float4 p = pos_mass[i]; // Lê pos(X,Y,Z) e a massa(W) de uma vez
+        
+        float v_half_x = vel[i*3 + 0] + 0.5f * acel[i*3 + 0] * dt;
+        float v_half_y = vel[i*3 + 1] + 0.5f * acel[i*3 + 1] * dt;
+        float v_half_z = vel[i*3 + 2] + 0.5f * acel[i*3 + 2] * dt;
+
+        p.x += v_half_x * dt;
+        p.y += v_half_y * dt;
+        p.z += v_half_z * dt;
+
+        pos_mass[i] = p; // Guarda a nova posição e a massa de volta na memória global
+        
+        vel[i*3 + 0] = v_half_x; vel[i*3 + 1] = v_half_y; vel[i*3 + 2] = v_half_z;
+    }
+}
+
 /*
 Kernel ingénuo (naive) para o cálculo de acelerações.
 Serve como baseline de performance. A sua principal limitação é o acesso
@@ -125,6 +145,53 @@ __global__ void calcular_aceleracoes_shared_mem(float *pos, float *massas, float
     }
 }
 
+/*
+Kernel OTIMIZAÇÃO MÁXIMA (shared_mem_float4).
+Além da memória partilhada e rsqrtf, funde as Posições e as Massas num array
+único do tipo `float4` (X, Y, Z, W=Massa).
+Isto permite que a GPU leia 128-bits de dados contíguos de uma só vez por thread,
+maximizando a largura de banda (Memory Coalescing perfeito).
+*/
+__global__ void calcular_aceleracoes_shared_mem_float4(float4 *pos_mass, float *acel, int N, float G, float eps) {
+    __shared__ float4 s_pos_mass[256]; // Array partilhado empacotado!
+
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+
+    if (i < N) {
+        float4 my_pos_mass = pos_mass[i]; // 1 Leitura vetorizada massiva em vez de 4 dispersas!
+        float pos_i_x = my_pos_mass.x;
+        float pos_i_y = my_pos_mass.y;
+        float pos_i_z = my_pos_mass.z;
+        float ax = 0.0f, ay = 0.0f, az = 0.0f;
+
+        int num_tiles = (N + blockDim.x - 1) / blockDim.x;
+
+        for (int tile_idx = 0; tile_idx < num_tiles; tile_idx++) {
+            int j_shared_load_idx = tile_idx * blockDim.x + threadIdx.x;
+            
+            if (j_shared_load_idx < N) {
+                s_pos_mass[threadIdx.x] = pos_mass[j_shared_load_idx]; // Leitura global ultra-rápida
+            } else {
+                s_pos_mass[threadIdx.x] = make_float4(0.0f, 0.0f, 0.0f, 0.0f); // massa fantasma
+            }
+            __syncthreads();
+
+            #pragma unroll
+            for (int j_tile = 0; j_tile < blockDim.x; j_tile++) {
+                float4 p_j = s_pos_mass[j_tile];
+                if (p_j.w > 0.0f && (tile_idx * blockDim.x + j_tile) != i) {
+                    float dx = p_j.x - pos_i_x; float dy = p_j.y - pos_i_y; float dz = p_j.z - pos_i_z;
+                    float inv_dist = rsqrtf(dx*dx + dy*dy + dz*dz + eps*eps);
+                    float forca = G * p_j.w * inv_dist * inv_dist * inv_dist; // p_j.w é a massa!
+                    ax += forca * dx; ay += forca * dy; az += forca * dz;
+                }
+            }
+            __syncthreads();
+        }
+        acel[i * 3 + 0] = ax; acel[i * 3 + 1] = ay; acel[i * 3 + 2] = az;
+    }
+}
+
 __global__ void post_update(float *vel, float *acel, float dt, int N) {
     // Este kernel implementa a segunda metade do integrador Leapfrog.
     // Ele recebe a aceleração recém-calculada (acel) e a velocidade de meio-passo
@@ -142,6 +209,7 @@ __global__ void post_update(float *vel, float *acel, float dt, int N) {
 
 mod = SourceModule(kernel_code)
 pre_update_gpu = mod.get_function("pre_update")
+pre_update_float4_gpu = mod.get_function("pre_update_float4")
 post_update_gpu = mod.get_function("post_update")
 
 # Mapeamento de nomes de métodos para as funções de kernel compiladas.
@@ -150,7 +218,7 @@ post_update_gpu = mod.get_function("post_update")
 kernels_aceleracao = {
     "naive": mod.get_function("calcular_aceleracoes_naive"),
     "shared_mem": mod.get_function("calcular_aceleracoes_shared_mem"),
-    # Futuras otimizações (ex: 'shared_mem_vec4') podem ser adicionadas aqui.
+    "shared_mem_float4": mod.get_function("calcular_aceleracoes_shared_mem_float4"),
 }
 
 def simular_n_corpos_gpu(pos, vel, massas, passos, dt, G, eps, method: str = "naive"):
@@ -159,21 +227,31 @@ def simular_n_corpos_gpu(pos, vel, massas, passos, dt, G, eps, method: str = "na
     import numpy as np # Mover import para dentro da função para evitar dependência a nível de módulo
     N_numpy = np.int32(N)
     
-    # Achatar arrays de (N, 3) para 1D (N*3) para a memória do C++
-    pos_flat = pos.flatten().astype(np.float32)
     vel_flat = vel.flatten().astype(np.float32)
     acel_flat = np.zeros(N * 3, dtype=np.float32)
-    massas = massas.astype(np.float32)
-
-    pos_gpu = cuda.mem_alloc(pos_flat.nbytes)
+    
     vel_gpu = cuda.mem_alloc(vel_flat.nbytes)
-    massas_gpu = cuda.mem_alloc(massas.nbytes)
     acel_gpu = cuda.mem_alloc(acel_flat.nbytes)
-
-    cuda.memcpy_htod(pos_gpu, pos_flat)
     cuda.memcpy_htod(vel_gpu, vel_flat)
-    cuda.memcpy_htod(massas_gpu, massas)
     cuda.memcpy_htod(acel_gpu, acel_flat)
+    
+    is_float4 = (method == "shared_mem_float4")
+
+    if is_float4:
+        # O Segredo do float4: Empacotar Posições (X,Y,Z) e Massas (W) no mesmo array NumPy de (N, 4)
+        pos_mass = np.zeros((N, 4), dtype=np.float32)
+        pos_mass[:, :3] = pos
+        pos_mass[:, 3] = massas
+        pos_flat = pos_mass.flatten()
+        pos_gpu = cuda.mem_alloc(pos_flat.nbytes)
+        cuda.memcpy_htod(pos_gpu, pos_flat)
+    else:
+        pos_flat = pos.flatten().astype(np.float32)
+        massas_flat = massas.astype(np.float32)
+        pos_gpu = cuda.mem_alloc(pos_flat.nbytes)
+        massas_gpu = cuda.mem_alloc(massas_flat.nbytes)
+        cuda.memcpy_htod(pos_gpu, pos_flat)
+        cuda.memcpy_htod(massas_gpu, massas_flat)
 
     threads_por_bloco = 256
     blocos_por_grid = int(np.ceil(N / threads_por_bloco))
@@ -186,15 +264,23 @@ def simular_n_corpos_gpu(pos, vel, massas, passos, dt, G, eps, method: str = "na
     kernel_acel = kernels_aceleracao[method]
 
     # Aceleração inicial (t=0)
-    kernel_acel(pos_gpu, massas_gpu, acel_gpu, N_numpy, np.float32(G), np.float32(eps), block=block_dim, grid=grid_dim)
+    if is_float4:
+        kernel_acel(pos_gpu, acel_gpu, N_numpy, np.float32(G), np.float32(eps), block=block_dim, grid=grid_dim)
+    else:
+        kernel_acel(pos_gpu, massas_gpu, acel_gpu, N_numpy, np.float32(G), np.float32(eps), block=block_dim, grid=grid_dim)
 
     # Sincronizar e iniciar cronómetro só para o ciclo
     cuda.Context.synchronize()
     inicio_tempo = time.perf_counter()
 
     for _ in range(passos):
-        pre_update_gpu(pos_gpu, vel_gpu, acel_gpu, np.float32(dt), N_numpy, block=block_dim, grid=grid_dim)
-        kernel_acel(pos_gpu, massas_gpu, acel_gpu, N_numpy, np.float32(G), np.float32(eps), block=block_dim, grid=grid_dim)
+        if is_float4:
+            pre_update_float4_gpu(pos_gpu, vel_gpu, acel_gpu, np.float32(dt), N_numpy, block=block_dim, grid=grid_dim)
+            kernel_acel(pos_gpu, acel_gpu, N_numpy, np.float32(G), np.float32(eps), block=block_dim, grid=grid_dim)
+        else:
+            pre_update_gpu(pos_gpu, vel_gpu, acel_gpu, np.float32(dt), N_numpy, block=block_dim, grid=grid_dim)
+            kernel_acel(pos_gpu, massas_gpu, acel_gpu, N_numpy, np.float32(G), np.float32(eps), block=block_dim, grid=grid_dim)
+            
         post_update_gpu(vel_gpu, acel_gpu, np.float32(dt), N_numpy, block=block_dim, grid=grid_dim)
 
     cuda.Context.synchronize()
@@ -203,7 +289,10 @@ def simular_n_corpos_gpu(pos, vel, massas, passos, dt, G, eps, method: str = "na
     # Recuperar dados
     cuda.memcpy_dtoh(pos_flat, pos_gpu)
     
-    # Reconstruir formato (N, 3)
-    pos_final = pos_flat.reshape((N, 3))
+    if is_float4:
+        # Extrair só os X,Y,Z das estruturas Float4 empacotadas
+        pos_final = pos_flat.reshape((N, 4))[:, :3]
+    else:
+        pos_final = pos_flat.reshape((N, 3))
 
     return pos_final, (fim_tempo - inicio_tempo)
