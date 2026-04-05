@@ -31,11 +31,12 @@ def calcular_aceleracoes_numpy(posicoes, massas, G, eps):
     
     return aceleracoes_finais
 
-def simular_n_corpos_cpu(pos, vel, massas, passos, dt, G, eps, callback_progresso=None):
+def simular_n_corpos_cpu(pos, vel, massas, passos, dt, G, eps, callback_progresso=None, guardar_historico=False):
     """
     Integra as equações de movimento usando o método Velocity Verlet.
-    Devolve o histórico de posições para visualização e validação em forma de um array (P, N, 3).
-    Esta função não deve ser utilizada para benchmarks puros
+    Se `guardar_historico` for True, devolve o histórico de posições para visualização.
+    Por defeito, `guardar_historico` é False para permitir benchmarks de performance justos,
+    onde a função apenas executa a simulação e modifica os arrays `pos` e `vel` in-place.
     """
     # Forçar todos os escalares para float32 para garantir que a simulação CPU
     # usa a mesma precisão que a GPU, evitando discrepâncias de precisão que podem ocorrer se o NumPy promover para float64.
@@ -44,17 +45,24 @@ def simular_n_corpos_cpu(pos, vel, massas, passos, dt, G, eps, callback_progress
     eps = np.float32(eps)
 
     N = pos.shape[0]
-    # Aloca array (P, N, 3) para guardar o histórico
-    historico_posicoes = np.zeros((passos, N, 3), dtype=np.float32)
+    historico_posicoes = None
+    if guardar_historico:
+        # MODO LENTO: Aloca um grande array para guardar o histórico completo.
+        # Necessário para visualização, mas muito custoso para benchmarks.
+        historico_posicoes = np.zeros((passos, N, 3), dtype=np.float32)
     
     # Aceleração inicial (t=0)
     acel = calcular_aceleracoes_numpy(pos, massas, G, eps)
     
     # Calcular o intervalo para imprimir o progresso (ex: a cada 20%)
-    passo_progresso = max(1, passos // 100)
+    passo_progresso = max(1, passos // 20) if callback_progresso else passos + 1
     
     for passo in range(passos):
-        historico_posicoes[passo] = pos.copy()
+        # OTIMIZAÇÃO CRÍTICA PARA BENCHMARK:
+        # Esta cópia de dados é a operação mais lenta depois do cálculo de aceleração.
+        # Ao usar `guardar_historico=False`, saltamos este passo e obtemos um tempo de CPU justo.
+        if guardar_historico:
+            historico_posicoes[passo] = pos.copy()
         
         # --- VELOCITY VERLET ---
         # 1. Posição atualizada com termo da aceleração
@@ -69,7 +77,8 @@ def simular_n_corpos_cpu(pos, vel, massas, passos, dt, G, eps, callback_progress
         acel = nova_acel
         
         # --- FEEDBACK DA SIMULAÇÃO ---
-        if callback_progresso is not None and ((passo + 1) % passo_progresso == 0 or (passo + 1) == passos):
-            callback_progresso(passo + 1, passos)
+        # Apenas tenta entrar neste bloco se um callback foi realmente fornecido (não é None).
+        if callback_progresso and ((passo + 1) % passo_progresso == 0 or (passo + 1) == passos):
+            callback_progresso(passo + 1, passos) # Esta chamada agora é segura.
             
     return historico_posicoes
