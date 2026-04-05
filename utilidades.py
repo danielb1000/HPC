@@ -37,5 +37,7 @@ def desenhar_grafico_n_corpos(historico_posicoes, massas, titulo="Simulação N-
     plt.ylabel("Coordenada Y")
     plt.axis('equal')
     plt.grid(True, alpha=0.15) # O N aqui é o número de partículas extraído do shape
+    print("saving figure...")
     plt.savefig(f"{N}_corpos_orbitas.png", dpi=300, pad_inches=0)
+    print(f"figure saved as {N}_corpos_orbitas.png")
     # plt.show()

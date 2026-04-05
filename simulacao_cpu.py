@@ -1,4 +1,5 @@
 import numpy as np
+import time
 
 def calcular_aceleracoes_numpy(posicoes, massas, G, eps):
     """
@@ -32,6 +33,7 @@ def simular_n_corpos_cpu(pos, vel, massas, passos, dt, G, eps, callback_progress
     """
     Integra as equações de movimento usando o método Velocity Verlet.
     Devolve o histórico de posições para visualização e validação em forma de um array (P, N, 3).
+    Esta função não deve ser utilizada para benchmarks puros
     """
     N = pos.shape[0]
     # Aloca array (P, N, 3) para guardar o histórico
