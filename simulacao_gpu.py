@@ -1,12 +1,17 @@
 import pycuda.autoinit
 import pycuda.driver as cuda
-import numpy as np
 from pycuda.compiler import SourceModule
 import time
 
 # Falta comentar o codigo do GPU para saber onde posso melhorar a performance, e onde posso melhorar a legibilidade do codigo.
 kernel_code = """
 __global__ void pre_update(float *pos, float *vel, float *acel, float dt, int N) {
+    // Este kernel implementa a primeira metade do integrador Leapfrog (Kick-Drift-Kick).
+    // 1. Calcula a velocidade no meio do passo de tempo (v_half).
+    // 2. Atualiza a posição para o fim do passo de tempo (Drift).
+    // 3. Armazena a v_half de volta no array de velocidade para ser usada no post_update.
+    // Otimização possível: O loop 'for (int d=...)' pode ser desenrolado para evitar
+    // ramificações, embora o compilador NVCC geralmente faça isso automaticamente.
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     if (i < N) {
         for (int d = 0; d < 3; d++) {
@@ -18,20 +23,34 @@ __global__ void pre_update(float *pos, float *vel, float *acel, float dt, int N)
     }
 }
 
-__global__ void calcular_aceleracoes(float *pos, float *massas, float *acel, int N, float G, float eps) {
+/*
+Kernel ingénuo (naive) para o cálculo de acelerações.
+Serve como baseline de performance. A sua principal limitação é o acesso
+intensivo e repetido à memória global, que é lenta.
+*/
+__global__ void calcular_aceleracoes_naive(float *pos, float *massas, float *acel, int N, float G, float eps) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     if (i < N) {
-        float ax = 0.0f; float ay = 0.0f; float az = 0.0f;
+        float ax = 0.0f, ay = 0.0f, az = 0.0f;
+        // Otimização Possível: Carregar pos_i para registos é bom.
         float pos_i_x = pos[i * 3 + 0];
         float pos_i_y = pos[i * 3 + 1];
         float pos_i_z = pos[i * 3 + 2];
 
+        // Ponto Crítico de Performance: Este ciclo é o coração do O(N^2).
+        // Para cada partícula 'i', estamos a ler as posições de TODAS as outras 'j'
+        // diretamente da memória global da GPU, que é lenta.
         for (int j = 0; j < N; j++) {
             if (i != j) {
+                // Cada leitura de pos[j*3+d] é um acesso à memória global.
                 float dx = pos[j * 3 + 0] - pos_i_x;
                 float dy = pos[j * 3 + 1] - pos_i_y;
                 float dz = pos[j * 3 + 2] - pos_i_z;
                 float dist_sq = dx*dx + dy*dy + dz*dz;
+
+                // Otimização Possível: A função powf é computacionalmente cara.
+                // Para expoentes como 1.5, é muito mais rápido usar a instrução
+                // intrínseca rsqrtf (recíproca da raiz quadrada).
                 float denominador = powf(dist_sq + eps*eps, 1.5f);
                 float forca = (G * massas[j]) / denominador;
                 ax += forca * dx; ay += forca * dy; az += forca * dz;
@@ -41,7 +60,65 @@ __global__ void calcular_aceleracoes(float *pos, float *massas, float *acel, int
     }
 }
 
+/*
+Kernel otimizado (shared_mem) para calcular acelerações. Utiliza duas técnicas principais:
+1. Memória Partilhada (Shared Memory): Reduz drasticamente os acessos à lenta memória global.
+   Cada bloco de threads carrega um "tile" (pedaço) de partículas para a memória partilhada,
+   que é ordens de magnitude mais rápida.
+2. Otimização de Instruções: Substitui a função `powf` pela intrínseca `rsqrtf`,
+   que é muito mais rápida no hardware da GPU. 1 / (d^3) é calculado como (1/sqrt(d^2))^3.
+*/
+__global__ void calcular_aceleracoes_shared_mem(float *pos, float *massas, float *acel, int N, float G, float eps) {
+    // Memória partilhada para um bloco de partículas. O tamanho é fixo e deve
+    // corresponder ao `threads_por_bloco` (e.g., 256).
+    __shared__ float s_pos[256 * 3];
+    __shared__ float s_massas[256];
+
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+
+    // Apenas threads que correspondem a partículas válidas (i < N) devem trabalhar.
+    if (i < N) {
+        // Carregar a posição da "minha" partícula para registos privados.
+        float pos_i_x = pos[i * 3 + 0];
+        float pos_i_y = pos[i * 3 + 1];
+        float pos_i_z = pos[i * 3 + 2];
+        float ax = 0.0f, ay = 0.0f, az = 0.0f;
+
+        int num_tiles = (N + blockDim.x - 1) / blockDim.x;
+
+        for (int tile_idx = 0; tile_idx < num_tiles; tile_idx++) {
+            int j_shared_load_idx = tile_idx * blockDim.x + threadIdx.x;
+            if (j_shared_load_idx < N) {
+                s_pos[threadIdx.x * 3 + 0] = pos[j_shared_load_idx * 3 + 0];
+                s_pos[threadIdx.x * 3 + 1] = pos[j_shared_load_idx * 3 + 1];
+                s_pos[threadIdx.x * 3 + 2] = pos[j_shared_load_idx * 3 + 2];
+                s_massas[threadIdx.x] = massas[j_shared_load_idx];
+            }
+            __syncthreads();
+
+            int num_particulas_no_tile = (tile_idx == num_tiles - 1) ? (N - tile_idx * blockDim.x) : blockDim.x;
+            for (int j_tile = 0; j_tile < num_particulas_no_tile; j_tile++) {
+                if ((tile_idx * blockDim.x + j_tile) != i) {
+                    float dx = s_pos[j_tile * 3 + 0] - pos_i_x;
+                    float dy = s_pos[j_tile * 3 + 1] - pos_i_y;
+                    float dz = s_pos[j_tile * 3 + 2] - pos_i_z;
+                    float dist_sq = dx*dx + dy*dy + dz*dz;
+                    float inv_dist = rsqrtf(dist_sq + eps*eps);
+                    float forca = G * s_massas[j_tile] * inv_dist * inv_dist * inv_dist;
+                    ax += forca * dx; ay += forca * dy; az += forca * dz;
+                }
+            }
+            __syncthreads();
+        }
+        acel[i * 3 + 0] = ax; acel[i * 3 + 1] = ay; acel[i * 3 + 2] = az;
+    }
+}
+
 __global__ void post_update(float *vel, float *acel, float dt, int N) {
+    // Este kernel implementa a segunda metade do integrador Leapfrog.
+    // Ele recebe a aceleração recém-calculada (acel) e a velocidade de meio-passo
+    // (armazenada em vel) para calcular a velocidade final do passo de tempo.
+    // v(t+dt) = v(t+dt/2) + a(t+dt) * dt/2
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     if (i < N) {
         for (int d = 0; d < 3; d++) {
@@ -54,11 +131,21 @@ __global__ void post_update(float *vel, float *acel, float dt, int N) {
 
 mod = SourceModule(kernel_code)
 pre_update_gpu = mod.get_function("pre_update")
-calcular_aceleracoes_gpu = mod.get_function("calcular_aceleracoes")
 post_update_gpu = mod.get_function("post_update")
 
-def simular_n_corpos_gpu(pos, vel, massas, passos, dt, G, eps):
+# Mapeamento de nomes de métodos para as funções de kernel compiladas.
+# Esta estrutura permite adicionar novas otimizações facilmente.
+# Basta adicionar um novo kernel C++ e mapear o seu nome aqui.
+kernels_aceleracao = {
+    "naive": mod.get_function("calcular_aceleracoes_naive"),
+    "shared_mem": mod.get_function("calcular_aceleracoes_shared_mem"),
+    # Futuras otimizações (ex: 'shared_mem_vec4') podem ser adicionadas aqui.
+}
+
+def simular_n_corpos_gpu(pos, vel, massas, passos, dt, G, eps, method: str = "naive"):
     N = pos.shape[0]
+
+    import numpy as np # Mover import para dentro da função para evitar dependência a nível de módulo
     N_numpy = np.int32(N)
     
     # Achatar arrays de (N, 3) para 1D (N*3) para a memória do C++
@@ -82,8 +169,13 @@ def simular_n_corpos_gpu(pos, vel, massas, passos, dt, G, eps):
     block_dim = (threads_por_bloco, 1, 1)
     grid_dim = (blocos_por_grid, 1)
 
+    if method not in kernels_aceleracao:
+        raise ValueError(f"Método de kernel '{method}' desconhecido. Válidos: {list(kernels_aceleracao.keys())}")
+    
+    kernel_acel = kernels_aceleracao[method]
+
     # Aceleração inicial (t=0)
-    calcular_aceleracoes_gpu(pos_gpu, massas_gpu, acel_gpu, N_numpy, np.float32(G), np.float32(eps), block=block_dim, grid=grid_dim)
+    kernel_acel(pos_gpu, massas_gpu, acel_gpu, N_numpy, np.float32(G), np.float32(eps), block=block_dim, grid=grid_dim)
 
     # Sincronizar e iniciar cronómetro só para o ciclo
     cuda.Context.synchronize()
@@ -91,7 +183,7 @@ def simular_n_corpos_gpu(pos, vel, massas, passos, dt, G, eps):
 
     for _ in range(passos):
         pre_update_gpu(pos_gpu, vel_gpu, acel_gpu, np.float32(dt), N_numpy, block=block_dim, grid=grid_dim)
-        calcular_aceleracoes_gpu(pos_gpu, massas_gpu, acel_gpu, N_numpy, np.float32(G), np.float32(eps), block=block_dim, grid=grid_dim)
+        kernel_acel(pos_gpu, massas_gpu, acel_gpu, N_numpy, np.float32(G), np.float32(eps), block=block_dim, grid=grid_dim)
         post_update_gpu(vel_gpu, acel_gpu, np.float32(dt), N_numpy, block=block_dim, grid=grid_dim)
 
     cuda.Context.synchronize()
