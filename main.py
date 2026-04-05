@@ -53,8 +53,9 @@ def main():
 
     # VALIDAÇÃO MATEMÁTICA E RESULTADOS
     # O desvio máximo entre as posições finais da CPU e GPU deve ser pequeno (dependendo do softening e do número de passos).
+    desvio_cpu_vs_gpu_naive = np.max(np.abs(pos_final_cpu - pos_final_gpu_base))
     desvio_cpu_vs_gpu_opt = np.max(np.abs(pos_final_cpu - pos_final_gpu_opt))
-    desvio_gpu_vs_gpu = np.max(np.abs(pos_final_gpu_base - pos_final_gpu_opt))
+    desvio_naive_vs_opt = np.max(np.abs(pos_final_gpu_base - pos_final_gpu_opt))
 
     print("\n" + "="*80)
     print(" RESULTADOS DO BENCHMARK para" ,N_PARTICULAS, "partículas,", PASSOS_TEMPO, "passos, Δt=", DELTA_T, )
@@ -62,10 +63,14 @@ def main():
     print(f"Tempo CPU (NumPy)          : {tempo_cpu:.4f} segundos")
     print(f"Tempo GPU (Naive)          : {tempo_gpu_base:.4f} segundos")
     print(f"Tempo GPU (Shared Memory)  : {tempo_gpu_opt:.4f} segundos")
+    print("-" * 80)
     print(f"Speedup (CPU vs GPU Opt)   : {tempo_cpu / tempo_gpu_opt:.2f}x mais rápido")
     print(f"Speedup (GPU Opt vs Naive) : {tempo_gpu_base / tempo_gpu_opt:.2f}x mais rápido")
-    print(f"Desvio Máximo (CPU vs GPU Opt) : {desvio_cpu_vs_gpu_opt:.6f}")
-    print(f"Desvio Máximo (GPU vs GPU Opt) : {desvio_gpu_vs_gpu:.6f} (deve ser próximo de zero)")
+    print("-" * 80)
+    print("ANÁLISE DE DESVIO NUMÉRICO:")
+    print(f"Desvio (CPU vs GPU Naive)      : {desvio_cpu_vs_gpu_naive:.6f} (Validação de correção. Deve ser ~0)")
+    print(f"Desvio (Naive vs Shared Mem)   : {desvio_naive_vs_opt:.6f} (Impacto da otimização rsqrtf. Pode ser grande)")
+    print(f"Desvio (CPU vs Shared Mem)     : {desvio_cpu_vs_gpu_opt:.6f} (Desvio total acumulado)")
     print("="*80)
     
     # Prova Visual (Matplotlib) - pode ser lento com muitas partículas/passos.

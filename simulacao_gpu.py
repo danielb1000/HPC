@@ -88,17 +88,28 @@ __global__ void calcular_aceleracoes_shared_mem(float *pos, float *massas, float
 
         for (int tile_idx = 0; tile_idx < num_tiles; tile_idx++) {
             int j_shared_load_idx = tile_idx * blockDim.x + threadIdx.x;
+            // Carregar dados para a memória partilhada.
+            // A correção crítica está aqui: se uma thread não corresponde a uma partícula
+            // válida (porque j_shared_load_idx >= N), ela DEVE carregar uma massa de 0.0f.
+            // O código anterior não fazia isso, deixando "lixo" de iterações passadas na
+            // memória partilhada, o que causava a instabilidade numérica.
             if (j_shared_load_idx < N) {
                 s_pos[threadIdx.x * 3 + 0] = pos[j_shared_load_idx * 3 + 0];
                 s_pos[threadIdx.x * 3 + 1] = pos[j_shared_load_idx * 3 + 1];
                 s_pos[threadIdx.x * 3 + 2] = pos[j_shared_load_idx * 3 + 2];
                 s_massas[threadIdx.x] = massas[j_shared_load_idx];
+            } else {
+                s_massas[threadIdx.x] = 0.0f; // Partícula fantasma, força será zero.
             }
             __syncthreads();
 
-            int num_particulas_no_tile = (tile_idx == num_tiles - 1) ? (N - tile_idx * blockDim.x) : blockDim.x;
-            for (int j_tile = 0; j_tile < num_particulas_no_tile; j_tile++) {
-                if ((tile_idx * blockDim.x + j_tile) != i) {
+            // Como agora garantimos que as partículas "fantasma" têm massa zero,
+            // podemos iterar sobre todo o bloco de threads (blockDim.x) sem perigo.
+            // A verificação s_massas[j_tile] > 0.0f garante que não fazemos cálculos
+            // desnecessários e também que o índice global da partícula j é válido.
+            #pragma unroll
+            for (int j_tile = 0; j_tile < blockDim.x; j_tile++) {
+                if (s_massas[j_tile] > 0.0f && (tile_idx * blockDim.x + j_tile) != i) {
                     float dx = s_pos[j_tile * 3 + 0] - pos_i_x;
                     float dy = s_pos[j_tile * 3 + 1] - pos_i_y;
                     float dz = s_pos[j_tile * 3 + 2] - pos_i_z;
