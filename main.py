@@ -9,10 +9,10 @@ import pycuda.driver as cuda
 
 
 def main():
-    N_PARTICULAS = 1000       # Aumentado para saturar a GPU (ex: 8192, 16384, 32768)
+    N_PARTICULAS = 2000       # Aumentado para saturar a GPU (ex: 8192, 16384, 32768)
     DELTA_T = 0.01          # Tempo de passo
-    PASSOS_TEMPO = 1000     # Reduzido para evitar que o CPU demore demasiadas horas
-    TAMANHO_CAIXA = 100.0   # Espaço cúbico onde as partículas são inicialmente distribuídas  
+    PASSOS_TEMPO = 100     # Reduzido para evitar que o CPU demore demasiadas horas
+    TAMANHO_CAIXA = 2000.0  # Escala aumentada drasticamente para suportar as 65k partículas sem explosões físicas
     EPSILON = 1.0           # Softening parameter = 1.0 em vez de 0.1 para evitar divergências numéricas em simulações longas.
     G = 1.0                 # Constante gravitacional
     MASSA_MIN = 10.0        # Massa mínima das partículas
@@ -21,7 +21,7 @@ def main():
     VELOCIDADE_MAX = 1.0    # Velocidade máxima das partículas
     np.random.seed(42)      # Seed fixa para resultados consistentes
 
-
+    IGNORAR_CPU = True  # True para benchmarks puros focados na GPU, False para comparação CPU vs GPU
     cuda.init()
     num_gpus = cuda.Device.count()
 
@@ -54,11 +54,16 @@ def main():
         energia_inicial_gpu = validar_energia_gpu(posicoes, velocidades, massas, G, EPSILON)
 
         # -- 1. CPU SIMULAÇÃO --
-        print("[1/6] A executar na CPU (NumPy)...")
-        inicio_cpu = time.perf_counter()
-        simular_n_corpos_cpu(pos_para_cpu, vel_para_cpu, massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, guardar_historico=False)
-        tempo_cpu = time.perf_counter() - inicio_cpu
-        pos_final_cpu = pos_para_cpu  
+        if not IGNORAR_CPU:
+            print("[1/6] A executar na CPU (NumPy)...")
+            inicio_cpu = time.perf_counter()
+            simular_n_corpos_cpu(pos_para_cpu, vel_para_cpu, massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, guardar_historico=False)
+            tempo_cpu = time.perf_counter() - inicio_cpu
+            pos_final_cpu = pos_para_cpu  
+        else:
+            print("[1/6] A executar na CPU (NumPy)... IGNORADO (IGNORAR_CPU = True)")
+            tempo_cpu = None
+            pos_final_cpu = None
         
         # -- 2. GPU SIMULAÇÃO (BASELINE (NAIVE)) --
         print("[2/6] A executar na GPU (PyCUDA - Baseline (Naive))...")
@@ -86,52 +91,59 @@ def main():
             pos_final_multigpu, vel_final_multigpu, tempo_multigpu = simular_n_corpos_multigpu(
                 posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, num_gpus_ativas=num_gpus
             )
-            desvio_cpu_vs_multigpu = np.max(np.abs(pos_final_cpu - pos_final_multigpu))
         else:
             print("[6/6] Ignorado. Sistema tem apenas 1 GPU.")
 
         # VALIDAÇÃO MATEMÁTICA E RESULTADOS
-        desvio_cpu_vs_gpu_naive = np.max(np.abs(pos_final_cpu - pos_final_gpu_naive))
-        desvio_cpu_vs_gpu_naive_fm = np.max(np.abs(pos_final_cpu - pos_final_gpu_naive_fm))
-        desvio_cpu_vs_gpu_opt = np.max(np.abs(pos_final_cpu - pos_final_gpu_opt))
-        desvio_cpu_vs_gpu_vec = np.max(np.abs(pos_final_cpu - pos_final_gpu_vec))
+        # Se não houver CPU, usamos a versão Naive como a fonte da verdade para desvios numéricos
+        ref_nome = "CPU" if not IGNORAR_CPU else "GPU Naive"
+        pos_ref = pos_final_cpu if not IGNORAR_CPU else pos_final_gpu_naive
+
+        desvio_naive = np.max(np.abs(pos_ref - pos_final_gpu_naive))
+        desvio_naive_fm = np.max(np.abs(pos_ref - pos_final_gpu_naive_fm))
+        desvio_opt = np.max(np.abs(pos_ref - pos_final_gpu_opt))
+        desvio_vec = np.max(np.abs(pos_ref - pos_final_gpu_vec))
 
         print("A calcular Energia Total Final na GPU...")
         energia_final_gpu = validar_energia_gpu(pos_final_gpu_vec, vel_final_gpu_vec, massas, G, EPSILON)
         erro_energia = abs((energia_final_gpu - energia_inicial_gpu) / energia_inicial_gpu) * 100
+        
+        str_tempo_cpu = f"{tempo_cpu:.4f} segundos" if not IGNORAR_CPU else "IGNORADO"
+        def spd(t): return f"{tempo_cpu / t:.2f}x mais rápido" if not IGNORAR_CPU else "N/A"
 
         print("\n" + "="*80)
         print(" RESULTADOS DO BENCHMARK para" ,N_PARTICULAS, "partículas,", PASSOS_TEMPO, "passos, Δt=", DELTA_T, )
         print("="*80)
-        print(f"Tempo CPU (NumPy)          : {tempo_cpu:.4f} segundos")
+        print(f"Tempo CPU (NumPy)          : {str_tempo_cpu}")
         print("-" * 80)
         print("GPU (Naive):")
-        print(f"  - Tempo de execution      : {tempo_gpu_naive:.4f} segundos")
-        print(f"  - Speedup vs CPU         : {tempo_cpu / tempo_gpu_naive:.2f}x mais rápido")
-        print(f"  - Desvio numérico vs CPU : {desvio_cpu_vs_gpu_naive:.6f}")
+        print(f"  - Tempo de execução      : {tempo_gpu_naive:.4f} segundos")
+        print(f"  - Speedup vs CPU         : {spd(tempo_gpu_naive)}")
+        print(f"  - Desvio numérico vs {ref_nome} : {desvio_naive:.6f}")
         print("-" * 80)
         print("GPU (Naive + Fast Math):")
         print(f"  - Tempo de execução      : {tempo_gpu_naive_fm:.4f} segundos")
-        print(f"  - Speedup vs CPU         : {tempo_cpu / tempo_gpu_naive_fm:.2f}x mais rápido")
-        print(f"  - Desvio numérico vs CPU : {desvio_cpu_vs_gpu_naive_fm:.6f}")
+        print(f"  - Speedup vs CPU         : {spd(tempo_gpu_naive_fm)}")
+        print(f"  - Desvio numérico vs {ref_nome} : {desvio_naive_fm:.6f}")
         print("-" * 80)
         print("GPU (Shared Memory + Fast Math):")
         print(f"  - Tempo de execução      : {tempo_gpu_opt:.4f} segundos")
-        print(f"  - Speedup vs CPU         : {tempo_cpu / tempo_gpu_opt:.2f}x mais rápido")
-        print(f"  - Desvio numérico vs CPU : {desvio_cpu_vs_gpu_opt:.6f}")
+        print(f"  - Speedup vs CPU         : {spd(tempo_gpu_opt)}")
+        print(f"  - Desvio numérico vs {ref_nome} : {desvio_opt:.6f}")
         print("-" * 80)
         print("GPU (Shared Mem + Float4 + Fast Math):")
         print(f"  - Tempo de execução      : {tempo_gpu_vec:.4f} segundos")
-        print(f"  - Speedup vs CPU         : {tempo_cpu / tempo_gpu_vec:.2f}x mais rápido")
-        print(f"  - Desvio numérico vs CPU : {desvio_cpu_vs_gpu_vec:.6f}")
+        print(f"  - Speedup vs CPU         : {spd(tempo_gpu_vec)}")
+        print(f"  - Desvio numérico vs {ref_nome} : {desvio_vec:.6f}")
         
         if num_gpus > 1:
+            desvio_multigpu = np.max(np.abs(pos_ref - pos_final_multigpu))
             print("-" * 80)
             print(f"MULTI-GPU ({num_gpus} Placas):")
             print(f"  - Tempo de execução      : {tempo_multigpu:.4f} segundos")
-            print(f"  - Speedup vs CPU         : {tempo_cpu / tempo_multigpu:.2f}x mais rápido")
+            print(f"  - Speedup vs CPU         : {spd(tempo_multigpu)}")
             print(f"  - Speedup vs GPU Float4  : {tempo_gpu_vec / tempo_multigpu:.2f}x mais rápido")
-            print(f"  - Desvio numérico vs CPU : {desvio_cpu_vs_multigpu:.6f}")
+            print(f"  - Desvio numérico vs {ref_nome} : {desvio_multigpu:.6f}")
             
         print("="*80)
         print(" VALIDAÇÃO FÍSICA (Conservação de Energia em CUDA)")
@@ -142,12 +154,14 @@ def main():
 
         # --- PROVA VISUAL (Matplotlib) ---
         DESENHAR = False  # True para gerar gráficos
-        if DESENHAR == True:
+        if DESENHAR == True and not IGNORAR_CPU:
             print("\n-> A re-executar simulação na CPU para gerar o histórico de posições para o gráfico...")
             pos_para_grafico = posicoes.copy()
             vel_para_grafico = velocidades.copy()
             hist_cpu_para_grafico = simular_n_corpos_cpu(pos_para_grafico, vel_para_grafico, massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, guardar_historico=True)
             desenhar_grafico_n_corpos(hist_cpu_para_grafico, massas, titulo=f"Dinâmica Orbital: {N_PARTICULAS} Corpos")
+        elif DESENHAR == True and IGNORAR_CPU:
+            print("\n-> Visualização ignorada: O Matplotlib precisa do histórico (IGNORAR_CPU está ativo).")
         else:
             print("\n-> Visualização desativada para benchmarks puros. Defina DESENHAR=True para gerar gráficos.")
             
