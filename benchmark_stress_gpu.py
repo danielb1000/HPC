@@ -11,7 +11,7 @@ import pycuda.autoinit
 def stress_test_gpu():
     # Valores SUPER massivos de N adaptados para GPUs de classe HPC (ex: A100 80GB)
     # potências de 2 alinham perfeitamente com os blocos de 256 threads
-    lista_N = [10, 16384, 32768, 65536, 131072, 262144, 524288] # 
+    lista_N = [10, 16384, 32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304] # 
     
     # Usamos menos passos porque para 262144 partículas, O(N^2) significa 
     # mais de 68.7 mil milhões de interações *por passo*.

@@ -9,10 +9,10 @@ import pycuda.driver as cuda
 
 
 def main():
-    N_PARTICULAS = 2000       # Aumentado para saturar a GPU (ex: 8192, 16384, 32768)
+    N_PARTICULAS = 200000       # Aumentado para saturar a GPU (ex: 8192, 16384, 32768)
     DELTA_T = 0.01          # Tempo de passo
     PASSOS_TEMPO = 100     # Reduzido para evitar que o CPU demore demasiadas horas
-    TAMANHO_CAIXA = 2000.0  # Escala aumentada drasticamente para suportar as 65k partículas sem explosões físicas
+    TAMANHO_CAIXA = 100.0  
     EPSILON = 1.0           # Softening parameter = 1.0 em vez de 0.1 para evitar divergências numéricas em simulações longas.
     G = 1.0                 # Constante gravitacional
     MASSA_MIN = 10.0        # Massa mínima das partículas
