@@ -1,9 +1,9 @@
-import pycuda.autoinit
 import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 import time
+import numpy as np
 
-THREADS_POR_BLOCO = 32 
+THREADS_POR_BLOCO = 512 
 
 kernel_code = """
 #define BLOCK_SIZE %d
@@ -283,27 +283,33 @@ __global__ void calcular_energia(float *pos, float *vel, float *massas, float *e
 
 """ % THREADS_POR_BLOCO
 
-mod = SourceModule(kernel_code, options=["-Xptxas", "-v", "-O3"])
-pre_update_gpu = mod.get_function("pre_update")
-pre_update_float4_gpu = mod.get_function("pre_update_float4")
-post_update_gpu = mod.get_function("post_update")
+mod = None
+pre_update_gpu = None
+pre_update_float4_gpu = None
+post_update_gpu = None
+kernels_aceleracao = {}
 
-
-# Mapeamento de nomes de métodos para as funções de kernel compiladas.
-# Esta estrutura permite adicionar novas otimizações facilmente.
-# Basta adicionar um novo kernel C++ e mapear o seu nome aqui.
-kernels_aceleracao = {
-    "naive": mod.get_function("calcular_aceleracoes_naive"),
-    "naive_fast_math": mod.get_function("calcular_aceleracoes_naive_fast_math"),
-    "shared_mem": mod.get_function("calcular_aceleracoes_shared_mem"),
-    "shared_mem_float4": mod.get_function("calcular_aceleracoes_shared_mem_float4"),
-}
+def _compilar_kernels():
+    """Compila os kernels apenas quando necessário (Lazy Compilation). Evita crash de contexto ao ser importado."""
+    global mod, pre_update_gpu, pre_update_float4_gpu, post_update_gpu, kernels_aceleracao
+    if mod is None:
+        mod = SourceModule(kernel_code, options=["-Xptxas", "-v", "-O3"])
+        pre_update_gpu = mod.get_function("pre_update")
+        pre_update_float4_gpu = mod.get_function("pre_update_float4")
+        post_update_gpu = mod.get_function("post_update")
+        
+        kernels_aceleracao = {
+            "naive": mod.get_function("calcular_aceleracoes_naive"),
+            "naive_fast_math": mod.get_function("calcular_aceleracoes_naive_fast_math"),
+            "shared_mem": mod.get_function("calcular_aceleracoes_shared_mem"),
+            "shared_mem_float4": mod.get_function("calcular_aceleracoes_shared_mem_float4"),
+        }
 
 def validar_energia_gpu(pos, vel, massas, G, eps):
     """
     Executa o cálculo pesado de energia O(N^2) na GPU e devolve a Energia Total.
     """
-    import numpy as np
+    _compilar_kernels()
     N = pos.shape[0]
     
     pos_flat = pos.flatten().astype(np.float32)
@@ -331,9 +337,9 @@ def validar_energia_gpu(pos, vel, massas, G, eps):
     return np.sum(energia_flat) # O CPU faz apenas a soma final O(N)
 
 def simular_n_corpos_gpu(pos, vel, massas, passos, dt, G, eps, method: str = "naive"):
+    _compilar_kernels()
     N = pos.shape[0]
 
-    import numpy as np # Mover import para dentro da função para evitar dependência a nível de módulo
     N_numpy = np.int32(N)
     
     # Preparar e alocar memória na GPU

@@ -3,11 +3,15 @@ from utilidades import gerar_condicoes_iniciais
 from simulacao_gpu import simular_n_corpos_gpu
 import pycuda.driver as cuda
 import pycuda.autoinit
+#
+# benchmark para testar os desempenhos da GPU em N muito grandes, onde o CPU já não é capaz de acompanhar.
+# este script é independente do main.py e do benchmark_typst.py, focado exclusivamente em testar os limites de desempenho da GPU com N massivos.
+# o script foi desenvolvido antes de otimizacoes finais, (dividir carga em multiplas GPUs)
 
 def stress_test_gpu():
     # Valores SUPER massivos de N adaptados para GPUs de classe HPC (ex: A100 80GB)
     # potências de 2 alinham perfeitamente com os blocos de 256 threads
-    lista_N = [16384, 32768, 65536, 131072, 262144, 524288] # 
+    lista_N = [10, 16384, 32768, 65536, 131072, 262144, 524288] # 
     
     # Usamos menos passos porque para 262144 partículas, O(N^2) significa 
     # mais de 68.7 mil milhões de interações *por passo*.

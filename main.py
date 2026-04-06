@@ -1,13 +1,15 @@
 import time
+import multiprocessing as mp
 from utilidades import gerar_condicoes_iniciais, desenhar_grafico_n_corpos
 from simulacao_cpu import simular_n_corpos_cpu
 from simulacao_gpu import simular_n_corpos_gpu, validar_energia_gpu
+from simulacao_multigpu import simular_n_corpos_multigpu
 import numpy as np
 import pycuda.driver as cuda
-import pycuda.autoinit
+
 
 def main():
-    N_PARTICULAS = 500       # Aumentado para saturar a GPU (ex: 8192, 16384, 32768)
+    N_PARTICULAS = 1000       # Aumentado para saturar a GPU (ex: 8192, 16384, 32768)
     DELTA_T = 0.01          # Tempo de passo
     PASSOS_TEMPO = 1000     # Reduzido para evitar que o CPU demore demasiadas horas
     TAMANHO_CAIXA = 100.0   # Espaço cúbico onde as partículas são inicialmente distribuídas  
@@ -19,113 +21,145 @@ def main():
     VELOCIDADE_MAX = 1.0    # Velocidade máxima das partículas
     np.random.seed(42)      # Seed fixa para resultados consistentes
 
+
+    cuda.init()
+    num_gpus = cuda.Device.count()
+
     print("="*75)
     print(f" BENCHMARK N-CORPOS: {N_PARTICULAS} Partículas, {PASSOS_TEMPO} Passos, Δt={DELTA_T}, Espaço = {TAMANHO_CAIXA}^3")
     print("="*75)
-    print(f" Dispositivo CUDA em uso: {cuda.Device(0).name()}\n")
-    
-    # Geração dos tensores (NumPy) de massas, posições e velocidades iniciais
-    massas, posicoes, velocidades = gerar_condicoes_iniciais(
-        N_PARTICULAS, TAMANHO_CAIXA, MASSA_MIN, MASSA_MAX, VELOCIDADE_MIN,VELOCIDADE_MAX, 
-        )
-
-    # Criar cópias para CPU e GPU para garantir que ambos começam com as mesmas condições iniciais
-    pos_para_cpu = posicoes.copy()
-    vel_para_cpu = velocidades.copy()
-
-    # -- 0. VALIDAÇÃO FÍSICA (GPU) --
-    # Usa a placa gráfica para calcular a energia O(N^2) inicial
-    print("[0/5] A calcular Energia Total Inicial na GPU...")
-    energia_inicial_gpu = validar_energia_gpu(posicoes, velocidades, massas, G, EPSILON)
-
-    # -- 1. CPU SIMULAÇÃO --
-    print("[1/5] A executar na CPU (NumPy)...")
-
-    inicio_cpu = time.perf_counter()
-    # Para um benchmark de performance justo, chamamos a função com `guardar_historico=False`.
-    # O histórico para o gráfico será gerado depois, se necessário.
-    simular_n_corpos_cpu(pos_para_cpu, vel_para_cpu, massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, guardar_historico=False)
-    tempo_cpu = time.perf_counter() - inicio_cpu
-    pos_final_cpu = pos_para_cpu  # O resultado final está no array que foi passado e modificado.
-    
-    # -- 2. GPU SIMULAÇÃO (BASELINE (NAIVE)) --
-    print("[2/5] A executar na GPU (PyCUDA - Baseline (Naive))...")
-    pos_final_gpu_naive, vel_final_gpu_naive, tempo_gpu_naive = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='naive')
-
-    # -- 3. GPU SIMULAÇÃO (NAIVE + FAST MATH) --
-    print("[3/5] A executar na GPU (PyCUDA - Naive + Fast Math)...")
-    pos_final_gpu_naive_fm, vel_final_gpu_naive_fm, tempo_gpu_naive_fm = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='naive_fast_math')
-
-    # -- 4. GPU SIMULAÇÃO (SHARED MEMORY + FAST MATH) --
-    print("[4/5] A executar na GPU (PyCUDA - Shared Memory + Fast Math)...")
-    pos_final_gpu_opt, vel_final_gpu_opt, tempo_gpu_opt = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='shared_mem')
-
-    # -- 5. GPU SIMULAÇÃO (SHARED MEMORY + FLOAT4 + FAST MATH) --
-    print("[5/5] A executar na GPU (PyCUDA - Shared Mem + Float4 Vector + Fast Math)...")
-    pos_final_gpu_vec, vel_final_gpu_vec, tempo_gpu_vec = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='shared_mem_float4')
-
-    # VALIDAÇÃO MATEMÁTICA E RESULTADOS
-    # O desvio máximo entre as posições finais da CPU e GPU deve ser pequeno (dependendo do softening e do número de passos).
-    desvio_cpu_vs_gpu_naive = np.max(np.abs(pos_final_cpu - pos_final_gpu_naive))
-    desvio_cpu_vs_gpu_naive_fm = np.max(np.abs(pos_final_cpu - pos_final_gpu_naive_fm))
-    desvio_cpu_vs_gpu_opt = np.max(np.abs(pos_final_cpu - pos_final_gpu_opt))
-    desvio_cpu_vs_gpu_vec = np.max(np.abs(pos_final_cpu - pos_final_gpu_vec))
-
-    # Usa a placa gráfica para calcular a energia final após a simulação otimizada
-    print("A calcular Energia Total Final na GPU...")
-    energia_final_gpu = validar_energia_gpu(pos_final_gpu_vec, vel_final_gpu_vec, massas, G, EPSILON)
-    erro_energia = abs((energia_final_gpu - energia_inicial_gpu) / energia_inicial_gpu) * 100
-
-    print("\n" + "="*80)
-    print(" RESULTADOS DO BENCHMARK para" ,N_PARTICULAS, "partículas,", PASSOS_TEMPO, "passos, Δt=", DELTA_T, )
-    print("="*80)
-    print(f"Tempo CPU (NumPy)          : {tempo_cpu:.4f} segundos")
-    print("-" * 80)
-    print("GPU (Naive):")
-    print(f"  - Tempo de execução      : {tempo_gpu_naive:.4f} segundos")
-    print(f"  - Speedup vs CPU         : {tempo_cpu / tempo_gpu_naive:.2f}x mais rápido")
-    print(f"  - Desvio numérico vs CPU : {desvio_cpu_vs_gpu_naive:.6f}")
-    print("-" * 80)
-    print("GPU (Naive + Fast Math):")
-    print(f"  - Tempo de execução      : {tempo_gpu_naive_fm:.4f} segundos")
-    print(f"  - Speedup vs CPU         : {tempo_cpu / tempo_gpu_naive_fm:.2f}x mais rápido")
-    print(f"  - Desvio numérico vs CPU : {desvio_cpu_vs_gpu_naive_fm:.6f}")
-    print("-" * 80)
-    print("GPU (Shared Memory + Fast Math):")
-    print(f"  - Tempo de execução      : {tempo_gpu_opt:.4f} segundos")
-    print(f"  - Speedup vs CPU         : {tempo_cpu / tempo_gpu_opt:.2f}x mais rápido")
-    print(f"  - Desvio numérico vs CPU : {desvio_cpu_vs_gpu_opt:.6f}")
-    print("-" * 80)
-    print("GPU (Shared Mem + Float4 + Fast Math):")
-    print(f"  - Tempo de execução      : {tempo_gpu_vec:.4f} segundos")
-    print(f"  - Speedup vs CPU         : {tempo_cpu / tempo_gpu_vec:.2f}x mais rápido")
-    print(f"  - Desvio numérico vs CPU : {desvio_cpu_vs_gpu_vec:.6f}")
-    print("="*80)
-    print(" VALIDAÇÃO FÍSICA (Conservação de Energia em CUDA)")
-    print(f"  - Energia Total Inicial  : {energia_inicial_gpu:.2f} J")
-    print(f"  - Energia Total Final    : {energia_final_gpu:.2f} J")
-    print(f"  - Erro de Conservação    : {erro_energia:.6f}%")
-    print("="*80)
+    print(f" GPUs detetadas no sistema: {num_gpus}")
+    print(f" Dispositivo Principal (GPU 0): {cuda.Device(0).name()}\n")
     
 
 
+    # -------------------------------------------------------------------------
+    # GESTÃO DE CONTEXTO MANUAL: Substitui o pycuda.autoinit
+    # Criamos o contexto na GPU 0 para ser usado pela CPU e simulações single-GPU
+    # -------------------------------------------------------------------------
+    ctx = cuda.Device(0).make_context()
+    
+    try:
+        # Geração dos tensores (NumPy) de massas, posições e velocidades iniciais
+        massas, posicoes, velocidades = gerar_condicoes_iniciais(
+            N_PARTICULAS, TAMANHO_CAIXA, MASSA_MIN, MASSA_MAX, VELOCIDADE_MIN,VELOCIDADE_MAX, 
+            )
 
+        # Criar cópias para CPU e GPU para garantir que ambos começam com as mesmas condições iniciais
+        pos_para_cpu = posicoes.copy()
+        vel_para_cpu = velocidades.copy()
 
+        # -- 0. VALIDAÇÃO FÍSICA (GPU) --
+        print("[0/6] A calcular Energia Total Inicial na GPU...")
+        energia_inicial_gpu = validar_energia_gpu(posicoes, velocidades, massas, G, EPSILON)
 
+        # -- 1. CPU SIMULAÇÃO --
+        print("[1/6] A executar na CPU (NumPy)...")
+        inicio_cpu = time.perf_counter()
+        simular_n_corpos_cpu(pos_para_cpu, vel_para_cpu, massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, guardar_historico=False)
+        tempo_cpu = time.perf_counter() - inicio_cpu
+        pos_final_cpu = pos_para_cpu  
+        
+        # -- 2. GPU SIMULAÇÃO (BASELINE (NAIVE)) --
+        print("[2/6] A executar na GPU (PyCUDA - Baseline (Naive))...")
+        pos_final_gpu_naive, vel_final_gpu_naive, tempo_gpu_naive = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='naive')
 
-    # --- PROVA VISUAL (Matplotlib) - PODE SER LENTO COM MUITAS PARTICULAS/PASSOS. ---
-    DESENHAR = False  # True para gerar gráficos
-    if DESENHAR == True:
-        print("\n-> A re-executar simulação na CPU para gerar o histórico de posições para o gráfico...")
-        # Para desenhar, precisamos do histórico. Re-executamos a simulação na CPU,
-        # mas desta vez com `guardar_historico=True`.
-        pos_para_grafico = posicoes.copy()
-        vel_para_grafico = velocidades.copy()
-        hist_cpu_para_grafico = simular_n_corpos_cpu(pos_para_grafico, vel_para_grafico, massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, guardar_historico=True)
-        desenhar_grafico_n_corpos(hist_cpu_para_grafico, massas, titulo=f"Dinâmica Orbital: {N_PARTICULAS} Corpos")
-    else:
-        print("\n-> Visualização desativada para benchmarks puros. Defina DESENHAR=True para gerar gráficos.")
+        # -- 3. GPU SIMULAÇÃO (NAIVE + FAST MATH) --
+        print("[3/6] A executar na GPU (PyCUDA - Naive + Fast Math)...")
+        pos_final_gpu_naive_fm, vel_final_gpu_naive_fm, tempo_gpu_naive_fm = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='naive_fast_math')
+
+        # -- 4. GPU SIMULAÇÃO (SHARED MEMORY + FAST MATH) --
+        print("[4/6] A executar na GPU (PyCUDA - Shared Memory + Fast Math)...")
+        pos_final_gpu_opt, vel_final_gpu_opt, tempo_gpu_opt = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='shared_mem')
+
+        # -- 5. GPU SIMULAÇÃO (SHARED MEMORY + FLOAT4 + FAST MATH) --
+        print("[5/6] A executar na GPU (PyCUDA - Shared Mem + Float4 Vector + Fast Math)...")
+        pos_final_gpu_vec, vel_final_gpu_vec, tempo_gpu_vec = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='shared_mem_float4')
+
+        # -- 6. GPU SIMULAÇÃO (MULTI-GPU) --
+        tempo_multigpu = None
+        desvio_cpu_vs_multigpu = None
+        if num_gpus > 1:
+            print(f"[6/6] A executar na GPU (Multi-GPU Distribuído - {num_gpus} GPUs)...")
+            # Para o script multi-gpu correr em segurança, ele não partilha este contexto CUDA principal. 
+            # Ele cria os próprios contextos nos workers isolados.
+            pos_final_multigpu, vel_final_multigpu, tempo_multigpu = simular_n_corpos_multigpu(
+                posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, num_gpus_ativas=num_gpus
+            )
+            desvio_cpu_vs_multigpu = np.max(np.abs(pos_final_cpu - pos_final_multigpu))
+        else:
+            print("[6/6] Ignorado. Sistema tem apenas 1 GPU.")
+
+        # VALIDAÇÃO MATEMÁTICA E RESULTADOS
+        desvio_cpu_vs_gpu_naive = np.max(np.abs(pos_final_cpu - pos_final_gpu_naive))
+        desvio_cpu_vs_gpu_naive_fm = np.max(np.abs(pos_final_cpu - pos_final_gpu_naive_fm))
+        desvio_cpu_vs_gpu_opt = np.max(np.abs(pos_final_cpu - pos_final_gpu_opt))
+        desvio_cpu_vs_gpu_vec = np.max(np.abs(pos_final_cpu - pos_final_gpu_vec))
+
+        print("A calcular Energia Total Final na GPU...")
+        energia_final_gpu = validar_energia_gpu(pos_final_gpu_vec, vel_final_gpu_vec, massas, G, EPSILON)
+        erro_energia = abs((energia_final_gpu - energia_inicial_gpu) / energia_inicial_gpu) * 100
+
+        print("\n" + "="*80)
+        print(" RESULTADOS DO BENCHMARK para" ,N_PARTICULAS, "partículas,", PASSOS_TEMPO, "passos, Δt=", DELTA_T, )
+        print("="*80)
+        print(f"Tempo CPU (NumPy)          : {tempo_cpu:.4f} segundos")
+        print("-" * 80)
+        print("GPU (Naive):")
+        print(f"  - Tempo de execution      : {tempo_gpu_naive:.4f} segundos")
+        print(f"  - Speedup vs CPU         : {tempo_cpu / tempo_gpu_naive:.2f}x mais rápido")
+        print(f"  - Desvio numérico vs CPU : {desvio_cpu_vs_gpu_naive:.6f}")
+        print("-" * 80)
+        print("GPU (Naive + Fast Math):")
+        print(f"  - Tempo de execução      : {tempo_gpu_naive_fm:.4f} segundos")
+        print(f"  - Speedup vs CPU         : {tempo_cpu / tempo_gpu_naive_fm:.2f}x mais rápido")
+        print(f"  - Desvio numérico vs CPU : {desvio_cpu_vs_gpu_naive_fm:.6f}")
+        print("-" * 80)
+        print("GPU (Shared Memory + Fast Math):")
+        print(f"  - Tempo de execução      : {tempo_gpu_opt:.4f} segundos")
+        print(f"  - Speedup vs CPU         : {tempo_cpu / tempo_gpu_opt:.2f}x mais rápido")
+        print(f"  - Desvio numérico vs CPU : {desvio_cpu_vs_gpu_opt:.6f}")
+        print("-" * 80)
+        print("GPU (Shared Mem + Float4 + Fast Math):")
+        print(f"  - Tempo de execução      : {tempo_gpu_vec:.4f} segundos")
+        print(f"  - Speedup vs CPU         : {tempo_cpu / tempo_gpu_vec:.2f}x mais rápido")
+        print(f"  - Desvio numérico vs CPU : {desvio_cpu_vs_gpu_vec:.6f}")
+        
+        if num_gpus > 1:
+            print("-" * 80)
+            print(f"MULTI-GPU ({num_gpus} Placas):")
+            print(f"  - Tempo de execução      : {tempo_multigpu:.4f} segundos")
+            print(f"  - Speedup vs CPU         : {tempo_cpu / tempo_multigpu:.2f}x mais rápido")
+            print(f"  - Speedup vs GPU Float4  : {tempo_gpu_vec / tempo_multigpu:.2f}x mais rápido")
+            print(f"  - Desvio numérico vs CPU : {desvio_cpu_vs_multigpu:.6f}")
+            
+        print("="*80)
+        print(" VALIDAÇÃO FÍSICA (Conservação de Energia em CUDA)")
+        print(f"  - Energia Total Inicial  : {energia_inicial_gpu:.2f} J")
+        print(f"  - Energia Total Final    : {energia_final_gpu:.2f} J")
+        print(f"  - Erro de Conservação    : {erro_energia:.6f}%")
+        print("="*80)
+
+        # --- PROVA VISUAL (Matplotlib) ---
+        DESENHAR = False  # True para gerar gráficos
+        if DESENHAR == True:
+            print("\n-> A re-executar simulação na CPU para gerar o histórico de posições para o gráfico...")
+            pos_para_grafico = posicoes.copy()
+            vel_para_grafico = velocidades.copy()
+            hist_cpu_para_grafico = simular_n_corpos_cpu(pos_para_grafico, vel_para_grafico, massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, guardar_historico=True)
+            desenhar_grafico_n_corpos(hist_cpu_para_grafico, massas, titulo=f"Dinâmica Orbital: {N_PARTICULAS} Corpos")
+        else:
+            print("\n-> Visualização desativada para benchmarks puros. Defina DESENHAR=True para gerar gráficos.")
+            
+    finally:
+        # Limpar o contexto CUDA de forma elegante ao fechar
+        ctx.pop()
 
 if __name__ == "__main__":
+    # Método de arranque seguro para PyCUDA com Multiprocessing
+    try:
+        mp.set_start_method('spawn')
+    except RuntimeError:
+        pass
+        
     main()
-    

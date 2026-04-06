@@ -3,6 +3,11 @@ import numpy as np
 from utilidades import gerar_condicoes_iniciais
 from simulacao_cpu import simular_n_corpos_cpu
 from simulacao_gpu import simular_n_corpos_gpu, validar_energia_gpu
+import pycuda.autoinit
+#
+# benchmark para gerar a tabela de resultados para o Typst antes de otimizacoes finais ()
+# Este script é independente do main.py e do benchmark_stress_gpu.py.
+# 
 
 def gerar_tabela_typst():
     # Os valores de N que queremos testar
