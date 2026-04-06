@@ -1,11 +1,13 @@
 import numpy as np
 from utilidades import gerar_condicoes_iniciais
 from simulacao_gpu import simular_n_corpos_gpu
+import pycuda.driver as cuda
+import pycuda.autoinit
 
 def stress_test_gpu():
     # Valores SUPER massivos de N adaptados para GPUs de classe HPC (ex: A100 80GB)
     # potências de 2 alinham perfeitamente com os blocos de 256 threads
-    lista_N = [32768, 65536, 131072, 262144]
+    lista_N = [16384, 32768, 65536, 131072, 262144, 524288] # 
     
     # Usamos menos passos porque para 262144 partículas, O(N^2) significa 
     # mais de 68.7 mil milhões de interações *por passo*.
@@ -22,6 +24,7 @@ def stress_test_gpu():
     print("="*90)
     print(f" GPU STRESS TEST: Comparação de Arquiteturas de Memória CUDA ({PASSOS_TEMPO} Passos)")
     print("="*90)
+    print(f" Dispositivo CUDA em uso : {cuda.Device(0).name()}")
     print("Neste teste o CPU é ignorado. O objetivo é saturar o poder de computação de uma GPU HPC.")
     print("-" * 90)
     print(f"{'N Partículas':<15} | {'Naive (s)':<15} | {'FastMath (s)':<15} | {'SharedMem (s)':<15} | {'Float4 (s)':<15}")

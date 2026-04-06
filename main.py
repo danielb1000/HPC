@@ -3,6 +3,8 @@ from utilidades import gerar_condicoes_iniciais, desenhar_grafico_n_corpos
 from simulacao_cpu import simular_n_corpos_cpu
 from simulacao_gpu import simular_n_corpos_gpu, validar_energia_gpu
 import numpy as np
+import pycuda.driver as cuda
+import pycuda.autoinit
 
 def main():
     N_PARTICULAS = 500       # Aumentado para saturar a GPU (ex: 8192, 16384, 32768)
@@ -20,6 +22,7 @@ def main():
     print("="*75)
     print(f" BENCHMARK N-CORPOS: {N_PARTICULAS} Partículas, {PASSOS_TEMPO} Passos, Δt={DELTA_T}, Espaço = {TAMANHO_CAIXA}^3")
     print("="*75)
+    print(f" Dispositivo CUDA em uso: {cuda.Device(0).name()}\n")
     
     # Geração dos tensores (NumPy) de massas, posições e velocidades iniciais
     massas, posicoes, velocidades = gerar_condicoes_iniciais(

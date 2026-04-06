@@ -27,7 +27,7 @@ def gerar_tabela_typst():
         f.write("    columns: (auto, auto, auto, auto, auto, auto, auto, auto),\n")
         f.write("    inset: 5pt,\n")
         f.write("    align: horizon,\n")
-        f.write("    [*N-Corpos*], [*t_CPU (s)*], [*Speedup\\ naive*], [*Speedup\\ fast math*], [*Speedup\\ Mem. Part.*], [*Speedup\\ vetores `float4`*],[*Desvio Máx. *], [*Erro Energia*],\n")
+        f.write("    [*N-Corpos*], [*t_CPU (s)*], [*Speedup\\ naive*], [*Speedup\\ fast math*], [*Speedup\\ Mem. Part.*], [*Speedup\\ vetores `float4`*],[*Desvio\\ Máx. *], [*Erro\\ Energia*],\n")
 
         for N in lista_N:
             np.random.seed(42) # Seed fixa para cada N ser consistente

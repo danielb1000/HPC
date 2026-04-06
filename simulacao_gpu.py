@@ -2,7 +2,12 @@ import pycuda.autoinit
 import pycuda.driver as cuda
 from pycuda.compiler import SourceModule
 import time
+
+THREADS_POR_BLOCO = 32 
+
 kernel_code = """
+#define BLOCK_SIZE %d
+
 __global__ void pre_update(float *pos, float *vel, float *acel, float dt, int N) {
     // Este kernel implementa a primeira metade do integrador Leapfrog (Kick-Drift-Kick).
     // 1. Calcula a velocidade no meio do passo de tempo (v_half).
@@ -117,8 +122,8 @@ Kernel otimizado (shared_mem) para calcular acelerações. Utiliza uma técnica 
 __global__ void calcular_aceleracoes_shared_mem(float *pos, float *massas, float *acel, int N, float G, float eps) {
     // Memória partilhada para um bloco de partículas. O tamanho é fixo e deve
     // corresponder ao `threads_por_bloco` (e.g., 256).
-    __shared__ float s_pos[256 * 3];
-    __shared__ float s_massas[256];
+    __shared__ float s_pos[BLOCK_SIZE * 3];
+    __shared__ float s_massas[BLOCK_SIZE];
 
     int i = threadIdx.x + blockIdx.x * blockDim.x;
 
@@ -184,7 +189,7 @@ maximizando a largura de banda (Memory Coalescing perfeito).
 Mantém a mesma arquitetura robusta de Tiling e syncthreads que estabilizámos.
 */
 __global__ void calcular_aceleracoes_shared_mem_float4(float4 *pos_mass, float *acel, int N, float G, float eps) {
-    __shared__ float4 s_pos_mass[256]; // Um único array partilhado empacotado!
+    __shared__ float4 s_pos_mass[BLOCK_SIZE]; // Um único array partilhado empacotado!
 
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     float ax = 0.0f, ay = 0.0f, az = 0.0f;
@@ -276,9 +281,9 @@ __global__ void calcular_energia(float *pos, float *vel, float *massas, float *e
     }
 }
 
-"""
+""" % THREADS_POR_BLOCO
 
-mod = SourceModule(kernel_code)
+mod = SourceModule(kernel_code, options=["-Xptxas", "-v", "-O3"])
 pre_update_gpu = mod.get_function("pre_update")
 pre_update_float4_gpu = mod.get_function("pre_update_float4")
 post_update_gpu = mod.get_function("post_update")
@@ -315,7 +320,7 @@ def validar_energia_gpu(pos, vel, massas, G, eps):
     cuda.memcpy_htod(vel_gpu, vel_flat)
     cuda.memcpy_htod(massas_gpu, massas_flat)
     
-    threads_por_bloco = 256
+    threads_por_bloco = THREADS_POR_BLOCO
     blocos_por_grid = int(np.ceil(N / threads_por_bloco))
     
     calcular_energia_kernel = mod.get_function("calcular_energia")
@@ -359,7 +364,7 @@ def simular_n_corpos_gpu(pos, vel, massas, passos, dt, G, eps, method: str = "na
         cuda.memcpy_htod(pos_gpu, pos_flat)
         cuda.memcpy_htod(massas_gpu, massas_flat)
 
-    threads_por_bloco = 256
+    threads_por_bloco = THREADS_POR_BLOCO
     blocos_por_grid = int(np.ceil(N / threads_por_bloco))
     block_dim = (threads_por_bloco, 1, 1)
     grid_dim = (blocos_por_grid, 1)
