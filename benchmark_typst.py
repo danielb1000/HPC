@@ -24,10 +24,10 @@ def gerar_tabela_typst():
     with open("tabela_typst.txt", "w", encoding="utf-8") as f:
         f.write("  #align(center)[\n")
         f.write("  #table(\n")
-        f.write("    columns: (auto, auto, auto, auto, auto, auto, auto),\n")
+        f.write("    columns: (auto, auto, auto, auto, auto, auto, auto, auto),\n")
         f.write("    inset: 5pt,\n")
         f.write("    align: horizon,\n")
-        f.write("    [*N-Corpos*], [*t_CPU (s)*],  [*Speedup\\ fast math*], [*Speedup\\ Mem. Part.*], [*Speedup\\ vetores `float4`*],[*Desvio Máx. *], [*Erro Energia*],\n")
+        f.write("    [*N-Corpos*], [*t_CPU (s)*], [*Speedup\\ naive*], [*Speedup\\ fast math*], [*Speedup\\ Mem. Part.*], [*Speedup\\ vetores `float4`*],[*Desvio Máx. *], [*Erro Energia*],\n")
 
         for N in lista_N:
             np.random.seed(42) # Seed fixa para cada N ser consistente
@@ -43,13 +43,16 @@ def gerar_tabela_typst():
             simular_n_corpos_cpu(pos_cpu, velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, guardar_historico=False)
             t_cpu = time.perf_counter() - inicio_cpu
 
-            # 2. GPU Naive Fast Math
+            # 2. GPU Naive
+            _, _, t_gpu_naive = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='naive')
+
+            # 3. GPU Naive Fast Math
             _, _, t_gpu_fm = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='naive_fast_math')
 
-            # 3. GPU Shared Memory
+            # 4. GPU Shared Memory
             _, _, t_gpu_sm = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='shared_mem')
 
-            # 4. GPU Float4
+            # 5. GPU Float4
             pos_gpu_f4, vel_gpu_f4, t_gpu_f4 = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='shared_mem_float4')
 
             desvio = np.max(np.abs(pos_cpu - pos_gpu_f4))
@@ -57,11 +60,12 @@ def gerar_tabela_typst():
             energia_final = validar_energia_gpu(pos_gpu_f4, vel_gpu_f4, massas, G, EPSILON)
             erro_energia = abs((energia_final - energia_inicial) / energia_inicial) * 100
 
+            speedup_naive = t_cpu / t_gpu_naive
             speedup_fm = t_cpu / t_gpu_fm
             speedup_sm = t_cpu / t_gpu_sm
             speedup_f4 = t_cpu / t_gpu_f4
 
-            f.write(f"    [{N}], [{t_cpu:.4f}], [{speedup_fm:.2f}x], [{speedup_sm:.2f}x], [{speedup_f4:.2f}x], [{desvio:.6f}], [{erro_energia:.5f}%],\n")
+            f.write(f"    [{N}], [{t_cpu:.4f}], [{speedup_naive:.2f}x], [{speedup_fm:.2f}x], [{speedup_sm:.2f}x], [{speedup_f4:.2f}x], [{desvio:.6f}], [{erro_energia:.5f}%],\n")
             print(f" -> Concluído benchmark para N = {N}")
 
         f.write("  )\n")
