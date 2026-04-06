@@ -18,9 +18,9 @@ def calcular_aceleracoes_numpy(posicoes, massas, G, eps):
 
     # 4. Denominador da gravidade suavizado pelo parâmetro epsilon
     np.fill_diagonal(dist_sq, 1.0)  # Evitar divisão por zero na diagonal (auto-interação)
-    # Forçar o cálculo em float32 para ser uma comparação justa com a GPU.
+    # Forçar o cálculo em float64 para ser uma comparação justa com a GPU.
     # O NumPy por defeito promove para float64 se um dos operandos for um float de Python.
-    denominador = (dist_sq + eps**2)**np.float32(1.5)
+    denominador = (dist_sq + eps**2)**np.float64(1.5)
 
     # 5. Formatar a massa para broadcasting: shape (1, N, 1)
     m_j = massas[np.newaxis, :, np.newaxis]
@@ -38,18 +38,18 @@ def simular_n_corpos_cpu(pos, vel, massas, passos, dt, G, eps, callback_progress
     Por defeito, `guardar_historico` é False para permitir benchmarks de performance justos,
     onde a função apenas executa a simulação e modifica os arrays `pos` e `vel` in-place.
     """
-    # Forçar todos os escalares para float32 para garantir que a simulação CPU
+    # Forçar todos os escalares para float64 para garantir que a simulação CPU
     # usa a mesma precisão que a GPU, evitando discrepâncias de precisão que podem ocorrer se o NumPy promover para float64.
-    dt = np.float32(dt)
-    G = np.float32(G)
-    eps = np.float32(eps)
+    dt = np.float64(dt)
+    G = np.float64(G)
+    eps = np.float64(eps)
 
     N = pos.shape[0]
     historico_posicoes = None
     if guardar_historico:
         # MODO LENTO: Aloca um grande array para guardar o histórico completo.
         # Necessário para visualização, mas muito custoso para benchmarks.
-        historico_posicoes = np.zeros((passos, N, 3), dtype=np.float32)
+        historico_posicoes = np.zeros((passos, N, 3), dtype=np.float64)
     
     # Aceleração inicial (t=0)
     acel = calcular_aceleracoes_numpy(pos, massas, G, eps)
@@ -66,13 +66,13 @@ def simular_n_corpos_cpu(pos, vel, massas, passos, dt, G, eps, callback_progress
         
         # --- VELOCITY VERLET ---
         # 1. Posição atualizada com termo da aceleração
-        pos += vel * dt + np.float32(0.5) * acel * (dt**2)
+        pos += vel * dt + np.float64(0.5) * acel * (dt**2)
         
         # 2. Avaliação de forças na nova posição
         nova_acel = calcular_aceleracoes_numpy(pos, massas, G, eps)
         
         # 3. Correção da velocidade (half-step implícito na média)
-        vel += np.float32(0.5) * (acel + nova_acel) * dt
+        vel += np.float64(0.5) * (acel + nova_acel) * dt
         
         acel = nova_acel
         
