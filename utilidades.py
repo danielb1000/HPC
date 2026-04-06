@@ -6,11 +6,11 @@ matplotlib.use('Agg')
 def gerar_condicoes_iniciais(N, tamanho_caixa=100.0, massa_min=10.0, massa_max=50.0,velocidade_min=-0.5 ,velocidade_max=0.5):
     """
     Gera as condições iniciais aleatórias para N partículas.
-    Retorna arrays NumPy de massas, posições e velocidades (float64 para compatibilidade CUDA).
+    Retorna arrays NumPy de massas, posições e velocidades (float32 para compatibilidade CUDA).
     """
-    massas = np.random.uniform(massa_min, massa_max, N).astype(np.float64) # Massas random entre massa_min e massa_max
-    posicoes = (np.random.rand(N, 3).astype(np.float64) * tamanho_caixa) - (tamanho_caixa / 2.0) # Posições random entre -tamanho_caixa/2 e +tamanho_caixa/2
-    velocidades = np.random.uniform(velocidade_min, velocidade_max, (N, 3)).astype(np.float64) # Velocidades random entre velocidade_min e velocidade_max
+    massas = np.random.uniform(massa_min, massa_max, N).astype(np.float32) # Massas random entre massa_min e massa_max
+    posicoes = (np.random.rand(N, 3).astype(np.float32) * tamanho_caixa) - (tamanho_caixa / 2.0) # Posições random entre -tamanho_caixa/2 e +tamanho_caixa/2
+    velocidades = np.random.uniform(velocidade_min, velocidade_max, (N, 3)).astype(np.float32) # Velocidades random entre velocidade_min e velocidade_max
     
     return massas, posicoes, velocidades
 
