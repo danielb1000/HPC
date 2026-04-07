@@ -16,9 +16,9 @@ def gerar_tabela_multigpu_typst():
     # ultrapassado pelo poder bruto de paralelismo das 4 GPUs.
     lista_N = [16384, 32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304] # Potências de 2 para alinhamento perfeito com blocos de 512 threads
     
+    TAMANHO_CAIXA = False # O tamanho vai ser dinâmico para cada N_PARTICULAS
     PASSOS_TEMPO = 20
     DELTA_T = 0.01
-    TAMANHO_CAIXA = 2000.0 # Caixa larga para evitar explosões físicas por super-densidade
     EPSILON = 1.0
     G = 1.0
     MASSA_MIN = 10.0
@@ -44,10 +44,14 @@ def gerar_tabela_multigpu_typst():
             f.write("    align: horizon,\n")
             f.write("    [*N-Corpos*], [*1 GPU Float4 (s)*], [*Multi-GPU (s)*], [*Speedup*], [*Desvio Máx.*], [*Erro Energia*],\n")
 
-            for N in lista_N:
+            for N_PARTICULAS in lista_N:
+                # Calcular tamanho da caixa dinamicamente para manter densidade constante (~0.002)
+                # Evita que Ns pequenos fiquem demasiado dispersos e Ns grandes explodam em NaNs.
+                TAMANHO_CAIXA = np.cbrt(N_PARTICULAS / 0.002)
+
                 np.random.seed(42)
                 massas, posicoes, velocidades = gerar_condicoes_iniciais(
-                    N, TAMANHO_CAIXA, MASSA_MIN, MASSA_MAX, VELOCIDADE_MIN, VELOCIDADE_MAX
+                    N_PARTICULAS, TAMANHO_CAIXA, MASSA_MIN, MASSA_MAX, VELOCIDADE_MIN, VELOCIDADE_MAX
                 )
                 
                 energia_inicial = validar_energia_gpu(posicoes, velocidades, massas, G, EPSILON)
@@ -64,8 +68,8 @@ def gerar_tabela_multigpu_typst():
                 erro_energia = abs((energia_final - energia_inicial) / energia_inicial) * 100
                 speedup = t_1gpu / t_multigpu
 
-                f.write(f"    [{N}], [{t_1gpu:.4f}], [{t_multigpu:.4f}], [*{speedup:.2f}x*], [{desvio:.6f}], [{erro_energia:.5f}%],\n")
-                print(f" -> Concluído benchmark para N = {N} | Speedup Multi-GPU: {speedup:.2f}x")
+                f.write(f"    [{N_PARTICULAS}], [{t_1gpu:.4f}], [{t_multigpu:.4f}], [*{speedup:.2f}x*], [{desvio:.6f}], [{erro_energia:.5f}%],\n")
+                print(f" -> Concluído benchmark para N = {N_PARTICULAS} | Speedup Multi-GPU: {speedup:.2f}x")
 
             f.write("  )\n")
             f.write("  ]\n")

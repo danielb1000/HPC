@@ -10,10 +10,10 @@ import pycuda.driver as cuda
 
 
 def main():
-    N_PARTICULAS = 200000       # Aumentado para saturar a GPU (ex: 8192, 16384, 32768)
-    DELTA_T = 0.01          # Tempo de passo
-    PASSOS_TEMPO = 100     # Reduzido para evitar que o CPU demore demasiadas horas
-    TAMANHO_CAIXA = 100.0  
+    N_PARTICULAS = 2    # Aumentado para saturar a GPU (ex: 8192, 16384, 32768)
+    DELTA_T = 0.01         # Tempo de passo
+    PASSOS_TEMPO = 200     # Reduzido para evitar que o CPU demore demasiadas horas
+    TAMANHO_CAIXA = np.cbrt(N_PARTICULAS / 0.002) # Calcular tamanho da caixa dinamicamente para manter densidade constante (~0.002). 
     EPSILON = 1.0           # Softening parameter = 1.0 em vez de 0.1 para evitar divergências numéricas em simulações longas.
     G = 1.0                 # Constante gravitacional
     MASSA_MIN = 10.0        # Massa mínima das partículas
@@ -22,12 +22,12 @@ def main():
     VELOCIDADE_MAX = 1.0    # Velocidade máxima das partículas
     np.random.seed(42)      # Seed fixa para resultados consistentes
 
-    IGNORAR_CPU = True  # True para benchmarks puros focados na GPU, False para comparação CPU vs GPU
+    IGNORAR_CPU = False  # True para benchmarks puros focados na GPU, False para comparação CPU vs GPU
     cuda.init()
     num_gpus = cuda.Device.count()
 
     print("="*75)
-    print(f" BENCHMARK N-CORPOS: {N_PARTICULAS} Partículas, {PASSOS_TEMPO} Passos, Δt={DELTA_T}, Espaço = {TAMANHO_CAIXA}^3")
+    print(f" BENCHMARK N-CORPOS: {N_PARTICULAS} Partículas, {PASSOS_TEMPO} Passos, Δt={DELTA_T}, Espaço = {TAMANHO_CAIXA:.2f}^3")
     print("="*75)
     print(f" GPUs detetadas no sistema: {num_gpus}")
     print(f" Dispositivo Principal (GPU 0): {cuda.Device(0).name()}\n")
@@ -171,7 +171,7 @@ def main():
         print("="*80)
 
         # --- PROVA VISUAL (Matplotlib) ---
-        DESENHAR = False  # True para gerar gráficos
+        DESENHAR = True  # True para gerar gráficos
         if DESENHAR == True and not IGNORAR_CPU:
             print("\n-> A re-executar simulação na CPU para gerar o histórico de posições para o gráfico...")
             pos_para_grafico = posicoes.copy()

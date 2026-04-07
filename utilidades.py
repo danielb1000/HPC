@@ -29,9 +29,9 @@ def desenhar_grafico_n_corpos(historico_posicoes, massas, titulo="Simulação N-
     for i in range(N):
         x = hist_np[:, i, 0] # Coordenada X da partícula i ao longo do tempo
         y = hist_np[:, i, 1] 
-        plt.plot(x, y, linewidth=1.2, alpha=0.7)
+        plt.plot(x, y, linewidth=1, alpha=0.6)
         # Ponto final da órbita, com tamanho proporcional à massa
-        plt.scatter(x[-1], y[-1], s=massas[i] * 1.5)   
+        plt.scatter(x[-1], y[-1], s=massas[i] * 1, linewidths=0.8, alpha=0.9)   
     plt.title(titulo)
     plt.xlabel("Coordenada X")
     plt.ylabel("Coordenada Y")

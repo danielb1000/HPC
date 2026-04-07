@@ -11,12 +11,12 @@ import pycuda.autoinit
 
 def gerar_tabela_typst():
     # Os valores de N que queremos testar
-    lista_N = [2, 100, 500, 1000, 2000]
+    lista_N = [2, 8, 32, 256, 512, 1024, 2048, 8192, 16384, 32768] # Potências de 2 para alinhamento perfeito com blocos de 512 threads
     
     # Constantes da simulação
+    TAMANHO_CAIXA = False # O tamanho vai ser dinâmico para cada N_PARTICULAS
     PASSOS_TEMPO = 1000
     DELTA_T = 0.01
-    TAMANHO_CAIXA = 100.0
     EPSILON = 1.0
     G = 1.0
     MASSA_MIN = 10.0
@@ -34,10 +34,14 @@ def gerar_tabela_typst():
         f.write("    align: horizon,\n")
         f.write("    [*N-Corpos*], [*t_CPU (s)*], [*Speedup\\ naive*], [*Speedup\\ fast math*], [*Speedup\\ Mem. Part.*], [*Speedup\\ vetores `float4`*],[*Desvio\\ Máx. *], [*Erro\\ Energia*],\n")
 
-        for N in lista_N:
+        for N_PARTICULAS in lista_N:
+            # Calcular tamanho da caixa dinamicamente para manter densidade constante (~0.002)
+            # Evita que Ns pequenos fiquem demasiado dispersos e Ns grandes explodam em NaNs.
+            TAMANHO_CAIXA = np.cbrt(N_PARTICULAS / 0.002)
+
             np.random.seed(42) # Seed fixa para cada N ser consistente
             massas, posicoes, velocidades = gerar_condicoes_iniciais(
-                N, TAMANHO_CAIXA, MASSA_MIN, MASSA_MAX, VELOCIDADE_MIN, VELOCIDADE_MAX
+                N_PARTICULAS, TAMANHO_CAIXA, MASSA_MIN, MASSA_MAX, VELOCIDADE_MIN, VELOCIDADE_MAX
             )
             
             energia_inicial = validar_energia_gpu(posicoes, velocidades, massas, G, EPSILON)
@@ -70,8 +74,8 @@ def gerar_tabela_typst():
             speedup_sm = t_cpu / t_gpu_sm
             speedup_f4 = t_cpu / t_gpu_f4
 
-            f.write(f"    [{N}], [{t_cpu:.4f}], [{speedup_naive:.2f}x], [{speedup_fm:.2f}x], [{speedup_sm:.2f}x], [{speedup_f4:.2f}x], [{desvio:.6f}], [{erro_energia:.5f}%],\n")
-            print(f" -> Concluído benchmark para N = {N}")
+            f.write(f"    [{N_PARTICULAS}], [{t_cpu:.4f}], [{speedup_naive:.2f}x], [{speedup_fm:.2f}x], [{speedup_sm:.2f}x], [{speedup_f4:.2f}x], [{desvio:.6f}], [{erro_energia:.5f}%],\n")
+            print(f" -> Concluído benchmark para N = {N_PARTICULAS}")
 
         f.write("  )\n")
         f.write("  ]\n")
