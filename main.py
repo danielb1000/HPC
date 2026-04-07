@@ -10,7 +10,7 @@ import pycuda.driver as cuda
 
 
 def main():
-    N_PARTICULAS = 2    # Aumentado para saturar a GPU (ex: 8192, 16384, 32768)
+    N_PARTICULAS = 100    # Aumentado para saturar a GPU (ex: 8192, 16384, 32768)
     DELTA_T = 0.01         # Tempo de passo
     PASSOS_TEMPO = 200     # Reduzido para evitar que o CPU demore demasiadas horas
     TAMANHO_CAIXA = np.cbrt(N_PARTICULAS / 0.002) # Calcular tamanho da caixa dinamicamente para manter densidade constante (~0.002). 

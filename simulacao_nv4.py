@@ -1,4 +1,5 @@
-import multiprocessing as mp
+import threading
+import queue
 import numpy as np
 import time
 
@@ -89,13 +90,14 @@ __global__ void post_update_multigpu(float *vel_local, float *acel_local, float 
 """
 
 def worker_gpu_nvlink(gpu_id, num_gpus, N_total, vel_init_local, pos_init_all, passos, dt, G, eps, 
-                      ipc_handles_dict, barrier_init, barrier_step, queue_result):
+                      pointers_dict, contexts_dict, barrier_init, barrier_step, queue_result):
     import pycuda.driver as cuda
     from pycuda.compiler import SourceModule
     
     cuda.init()
     dev = cuda.Device(gpu_id)
     ctx = dev.make_context()
+    contexts_dict[gpu_id] = ctx
     
     try:
         mod = SourceModule(KERNEL_CODE_NV4, options=["-Xptxas", "-v", "-O3"])
@@ -122,23 +124,21 @@ def worker_gpu_nvlink(gpu_id, num_gpus, N_total, vel_init_local, pos_init_all, p
         d_acel_local = cuda.mem_alloc(N_local * 3 * 4)
         cuda.memcpy_htod(d_vel_local, vel_local_host)
 
-        # IPC: Exportar a "Pega" de comunicação deste endereço
-        my_ipc_handle = cuda.mem_get_ipc_handle(d_pos_mass_local)
-        ipc_handles_dict[gpu_id] = (my_ipc_handle, offset, N_local)
+        # Partilhar o ponteiro direto da VRAM (possível porque partilhamos o mesmo processo)
+        pointers_dict[gpu_id] = (int(d_pos_mass_local), offset, N_local)
 
-        # Sincronizar: Dar tempo para todas as GPUs publicarem os seus IPC Handles
+        # Sincronizar: Dar tempo para todas as GPUs publicarem os seus ponteiros
         barrier_init.wait()
 
         # Mapear os ponteiros das outras GPUs diretamente para a nossa VRAM local
         peer_buffers = {}
         for peer_id in range(num_gpus):
             if peer_id != gpu_id:
-                peer_handle, peer_offset, peer_N = ipc_handles_dict[peer_id]
+                peer_ptr, peer_offset, peer_N = pointers_dict[peer_id]
+                peer_ctx = contexts_dict[peer_id]
                 try:
                     if dev.can_access_peer(cuda.Device(peer_id)):
-                        ctx.enable_peer_access(cuda.Device(peer_id))
-                    # Isto converte a pega remota num ponteiro nativo no nosso contexto
-                    peer_ptr = cuda.mem_open_ipc_handle(peer_handle)
+                        ctx.enable_peer_access(peer_ctx)
                     peer_buffers[peer_id] = (peer_ptr, peer_offset, peer_N)
                 except Exception as e:
                     print(f"Aviso GPU {gpu_id}: NVLink P2P falhou para a GPU {peer_id}. {e}")
@@ -172,10 +172,6 @@ def worker_gpu_nvlink(gpu_id, num_gpus, N_total, vel_init_local, pos_init_all, p
         cuda.memcpy_dtoh(pos_mass_local_final, d_pos_mass_local)
         cuda.memcpy_dtoh(vel_local_final, d_vel_local)
         
-        # Limpar memória partilhada do sistema operacional
-        for peer_id, (peer_ptr, _, _) in peer_buffers.items():
-            cuda.mem_close_ipc_handle(peer_ptr)
-            
         queue_result.put((gpu_id, pos_mass_local_final, vel_local_final))
         
     finally:
@@ -187,11 +183,11 @@ def simular_n_corpos_nv4(pos, vel, massas, passos, dt, G, eps, num_gpus_ativas=4
     pos_mass[:, :3] = pos
     pos_mass[:, 3] = massas
     
-    manager = mp.Manager()
-    ipc_handles_dict = manager.dict()
-    barrier_init = mp.Barrier(num_gpus_ativas + 1) 
-    barrier_step = mp.Barrier(num_gpus_ativas)     
-    queue_result = mp.Queue()
+    pointers_dict = {}
+    contexts_dict = {}
+    barrier_init = threading.Barrier(num_gpus_ativas + 1) 
+    barrier_step = threading.Barrier(num_gpus_ativas)     
+    queue_result = queue.Queue()
     processos = []
     
     for i in range(num_gpus_ativas):
@@ -200,9 +196,9 @@ def simular_n_corpos_nv4(pos, vel, massas, passos, dt, G, eps, num_gpus_ativas=4
         N_local = N_local_base if i < num_gpus_ativas - 1 else N - offset
         vel_local_init = vel[offset:offset+N_local].copy()
         
-        p = mp.Process(target=worker_gpu_nvlink, args=(
+        p = threading.Thread(target=worker_gpu_nvlink, args=(
             i, num_gpus_ativas, N, vel_local_init, pos_mass, passos, dt, G, eps, 
-            ipc_handles_dict, barrier_init, barrier_step, queue_result
+            pointers_dict, contexts_dict, barrier_init, barrier_step, queue_result
         ))
         p.start()
         processos.append(p)

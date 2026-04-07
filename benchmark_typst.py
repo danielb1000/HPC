@@ -15,7 +15,7 @@ def gerar_tabela_typst():
     
     # Constantes da simulação
     TAMANHO_CAIXA = False # O tamanho vai ser dinâmico para cada N_PARTICULAS
-    PASSOS_TEMPO = 1000
+    PASSOS_TEMPO = 200
     DELTA_T = 0.01
     EPSILON = 1.0
     G = 1.0

@@ -5,6 +5,7 @@ import pycuda.driver as cuda
 from utilidades import gerar_condicoes_iniciais
 from simulacao_gpu import simular_n_corpos_gpu, validar_energia_gpu
 from simulacao_multigpu import simular_n_corpos_multigpu
+from simulacao_nv4 import simular_n_corpos_nv4
 
 #
 # Benchmark exclusivo para testar a escalabilidade Multi-GPU em escalas de HPC
@@ -39,10 +40,10 @@ def gerar_tabela_multigpu_typst():
         with open("tabela_multigpu_typst.txt", "w", encoding="utf-8") as f:
             f.write("  #align(center)[\n")
             f.write("  #table(\n")
-            f.write("    columns: (auto, auto, auto, auto, auto, auto),\n")
+            f.write("    columns: (auto, auto, auto, auto, auto, auto, auto, auto),\n")
             f.write("    inset: 5pt,\n")
             f.write("    align: horizon,\n")
-            f.write("    [*N-Corpos*], [*1 GPU Float4 (s)*], [*Multi-GPU (s)*], [*Speedup*], [*Desvio Máx.*], [*Erro Energia*],\n")
+            f.write("    [*N*], [*1-GPU\ `float4` (s)*], [*Multi PCIe (s)*],  [*Multi NVLink (s)*], [*Speedup PCIe*], [*Speedup NVLink*], [*Desvio\ Máx.*], [*Erro\ Energia*],\n")
 
             for N_PARTICULAS in lista_N:
                 # Calcular tamanho da caixa dinamicamente para manter densidade constante (~0.002)
@@ -62,14 +63,21 @@ def gerar_tabela_multigpu_typst():
                 # 2. Distribuído: 4 GPUs
                 pos_multigpu, vel_multigpu, t_multigpu = simular_n_corpos_multigpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, num_gpus_ativas=num_gpus)
 
-                # Validações Físicas
-                desvio = np.max(np.abs(pos_1gpu - pos_multigpu))
-                energia_final = validar_energia_gpu(pos_multigpu, vel_multigpu, massas, G, EPSILON)
-                erro_energia = abs((energia_final - energia_inicial) / energia_inicial) * 100
-                speedup = t_1gpu / t_multigpu
+                # 3. NVLink P2P: 4 GPUs
+                pos_nv4, vel_nv4, t_nv4 = simular_n_corpos_nv4(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, num_gpus_ativas=num_gpus)
 
-                f.write(f"    [{N_PARTICULAS}], [{t_1gpu:.4f}], [{t_multigpu:.4f}], [*{speedup:.2f}x*], [{desvio:.6f}], [{erro_energia:.5f}%],\n")
-                print(f" -> Concluído benchmark para N = {N_PARTICULAS} | Speedup Multi-GPU: {speedup:.2f}x")
+                # Validações Físicas
+                desvio_multigpu = np.max(np.abs(pos_1gpu - pos_multigpu))
+                desvio_nv4 = np.max(np.abs(pos_1gpu - pos_nv4))
+                desvio = max(desvio_multigpu, desvio_nv4)
+
+                energia_final = validar_energia_gpu(pos_nv4, vel_nv4, massas, G, EPSILON)
+                erro_energia = abs((energia_final - energia_inicial) / energia_inicial) * 100
+                speedup_multi = t_1gpu / t_multigpu
+                speedup_nv4 = t_1gpu / t_nv4
+
+                f.write(f"    [{N_PARTICULAS}], [{t_1gpu:.4f}], [{t_multigpu:.4f}], [{t_nv4:.4f}], [*{speedup_multi:.2f}x*], [*{speedup_nv4:.2f}x*], [{desvio:.6f}], [{erro_energia:.5f}%],\n")
+                print(f" -> Concluído benchmark para N = {N_PARTICULAS} | Speedup Multi-GPU: {speedup_multi:.2f}x | Speedup NVLink: {speedup_nv4:.2f}x")
 
             f.write("  )\n")
             f.write("  ]\n")
