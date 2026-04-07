@@ -9,7 +9,7 @@ O projeto está desenhado de forma modular, separando a lógica de simulação e
 ### 🚀 Módulos Principais
 
 * **`main.py`**
-  O ponto de entrada principal (orquestrador e de *benchmarking*). Gera as condições iniciais e corre sucessivas simulações progressivamente mais otimizadas (CPU -> GPU Naive -> Shared Memory -> Float4 -> Multi-GPU -> NVLink), validando resultados, calculando *speedups* e, opcionalmente, desenhando as órbitas.
+  O ponto de entrada principal (orquestrador e de *benchmarking*). Gera as condições iniciais e corre sucessivas simulações progressivamente mais otimizadas (CPU -> GPU Naive -> Shared Memory -> Float4 -> Multi-GPU -> NVLink), validando resultados e calculando *speedups*.
 * **`simulacao_cpu.py`**
   Implementação no CPU utilizando **NumPy** com operações vetorizadas e *broadcasting* para otimizar o cálculo de complexidade O(N²), evitando os lentos ciclos `for` em Python.
 * **`simulacao_gpu.py`**
@@ -28,7 +28,20 @@ O projeto está desenhado de forma modular, separando a lógica de simulação e
 * **`teste_servidor_gpu.py`**
   Script de diagnóstico concebido para testar a inicialização concorrente, gestão de contextos PyCUDA e a alocação de memória em servidores HPC com múltiplas GPUs.
 
-### 📚 Ficheiros de Estudo e Validação
+### 📊 Benchmarks e Resultados
+
+A execução de testes e comparações de performance é orquestrada centralmente:
+
+* **`main.py` (Relatórios de Terminal)**
+  Emite as métricas essenciais do HPC no final da simulação: Tempos de execução para todas as implementações, *Speedups* iterativos (CPU vs GPU Naive, Multi-GPU vs NVLink), monitorização do Desvio Numérico entre dispositivos, e o cálculo de erro da Conservação de Energia Física.
+* **Geração de Gráficos (Logs Visuais `.png`)**
+  - `[N]_corpos_orbitas.png`: É guardado automaticamente na raiz (gerado através das ferramentas no `utilidades.py`), espelhando a renderização 2D final das trajetórias caso a flag `DESENHAR` esteja ativa.
+  - `comparacao_integradores.png`: Gerado pelo ficheiro de estudo `euler_vs_verlet.py`, provando numéricamente a estabilidade do método Velocity Verlet face a Euler puro.
+* **Exportação para Relatórios Académicos (Typst)**
+  - **`benchmark_typst.py`**: Script focado na evolução das otimizações para uma única GPU. Executa testes de escalabilidade (N=2 até 32.768), comparando os tempos de execução do CPU face às 4 variantes construídas (Naive, Fast Math, Shared Memory e Float4). Exporta a tabela final com os *Speedups* formatados nativamente para Typst (`tabela_typst.txt`).
+  - **`benchmark_multigpu_typst.py`**: Teste de *stress* para HPC extremo (N=16.384 até mais de 4 Milhões de corpos). Avalia o teto arquitetural medindo o desempenho entre a melhor versão Single-GPU, Multi-GPU padrão (gargalo PCIe) e Multi-GPU via NVLink P2P, exportando diretamente a tabela de resultados para Typst (`tabela_multigpu_typst.txt`).
+
+### 🤓 Ficheiros de Estudo e Validação
 
 * **`learning_cuda.py`**
   Um script monolítico de estudo que serviu para entender o funcionamento do PyCUDA. Contém toda a lógica e os *Kernels* em C++ num só ficheiro. Foi a base da qual o código de produção (`simulacao_gpu.py`) foi extraído.
@@ -36,5 +49,3 @@ O projeto está desenhado de forma modular, separando a lógica de simulação e
   Um script educativo que explica (visualmente) o problema de degradação orbital na integração numérica. Compara os métodos de *Euler* (diverge), *Euler-Cromer* (estável) e *Velocity Verlet* (muito preciso), justificando o uso do Verlet no projeto principal.
 * **`simple2body.py`**
   Um script simples de validação (teste unitário) que calcula à mão as forças gravitacionais entre apenas 2 corpos em 3D, para garantir que as equações base da aceleração estão perfeitamente corretas antes de escalar para N corpos.
-
-*(Se o número de partículas for baixo o suficiente, ou se a variável de visualização estiver ativa, uma janela abrir-se-á no final mostrando a trajetória dos corpos).*
