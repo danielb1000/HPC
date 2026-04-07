@@ -4,6 +4,7 @@ from utilidades import gerar_condicoes_iniciais, desenhar_grafico_n_corpos
 from simulacao_cpu import simular_n_corpos_cpu
 from simulacao_gpu import simular_n_corpos_gpu, validar_energia_gpu
 from simulacao_multigpu import simular_n_corpos_multigpu
+from simulacao_nv4 import simular_n_corpos_nv4
 import numpy as np
 import pycuda.driver as cuda
 
@@ -94,6 +95,14 @@ def main():
         else:
             print("[6/6] Ignorado. Sistema tem apenas 1 GPU.")
 
+        # -- 7. GPU SIMULAÇÃO (NVLINK / NVSWITCH P2P) --
+        tempo_nv4 = None
+        if num_gpus > 1:
+            print(f"[7/7] A executar na GPU (NVLink/NVSwitch P2P - {num_gpus} GPUs)...")
+            pos_final_nv4, vel_final_nv4, tempo_nv4 = simular_n_corpos_nv4(
+                posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, num_gpus_ativas=num_gpus
+            )
+
         # VALIDAÇÃO MATEMÁTICA E RESULTADOS
         # Se não houver CPU, usamos a versão Naive como a fonte da verdade para desvios numéricos
         ref_nome = "CPU" if not IGNORAR_CPU else "GPU Naive"
@@ -145,6 +154,15 @@ def main():
             print(f"  - Speedup vs GPU Float4  : {tempo_gpu_vec / tempo_multigpu:.2f}x mais rápido")
             print(f"  - Desvio numérico vs {ref_nome} : {desvio_multigpu:.6f}")
             
+        if num_gpus > 1 and tempo_nv4 is not None:
+            desvio_nv4 = np.max(np.abs(pos_ref - pos_final_nv4))
+            print("-" * 80)
+            print(f"MULTI-GPU NVLINK/NVSWITCH ({num_gpus} Placas P2P):")
+            print(f"  - Tempo de execução      : {tempo_nv4:.4f} segundos")
+            print(f"  - Speedup vs CPU         : {spd(tempo_nv4)}")
+            print(f"  - Speedup vs Multi-GPU   : {tempo_multigpu / tempo_nv4:.2f}x mais rápido")
+            print(f"  - Desvio numérico vs {ref_nome} : {desvio_nv4:.6f}")
+
         print("="*80)
         print(" VALIDAÇÃO FÍSICA (Conservação de Energia em CUDA)")
         print(f"  - Energia Total Inicial  : {energia_inicial_gpu:.2f} J")
