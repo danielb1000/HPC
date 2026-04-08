@@ -3,7 +3,7 @@ from pycuda.compiler import SourceModule
 import time
 import numpy as np
 
-THREADS_POR_BLOCO = 1024 
+THREADS_POR_BLOCO = 512 
 
 kernel_code = """
 #define BLOCK_SIZE %d
@@ -232,77 +232,6 @@ __global__ void calcular_aceleracoes_shared_mem_float4(float4 *pos_mass, float *
     }
 }
 
-/*
-Kernel EXTREMO (shared_mem_coarsened).
-Aplica "Thread Coarsening" / "Register Tiling". Cada Thread calcula 4 partículas simultaneamente.
-Isto aumenta dramaticamente a Intensidade Aritmética (ILP - Instruction Level Parallelism),
-escondendo a latência das operações matemáticas FMA e reduzindo a pressão na Memória Partilhada em 75%%.
-*/
-__global__ void calcular_aceleracoes_shared_mem_coarsened(float4 *pos_mass, float *acel, int N, float G, float eps) {
-    const int FACTOR = 2; // Cada thread processa 2 partículas
-    __shared__ float4 s_pos_mass[BLOCK_SIZE];
-
-    // Padrão "Striped" para garantir acesso coalescido à memória global
-    // Ex: Thread 0 lê as partículas 0, 512, 1024 e 1536
-    int base_i = threadIdx.x + blockIdx.x * blockDim.x * FACTOR;
-
-    // Arrays em registos (muito rápidos)
-    float4 my_pos[FACTOR];
-    float ax[FACTOR] = {0.0f}, ay[FACTOR] = {0.0f}, az[FACTOR] = {0.0f};
-
-    // 1. Carregar as nossas 4 partículas da VRAM para os Registos
-    #pragma unroll
-    for (int c = 0; c < FACTOR; c++) {
-        int idx = base_i + c * blockDim.x;
-        if (idx < N) {
-            my_pos[c] = pos_mass[idx];
-        }
-    }
-
-    int num_tiles = (N + blockDim.x - 1) / blockDim.x;
-
-    for (int tile_idx = 0; tile_idx < num_tiles; tile_idx++) {
-        int j_shared_load_idx = tile_idx * blockDim.x + threadIdx.x;
-        
-        if (j_shared_load_idx < N) {
-            s_pos_mass[threadIdx.x] = pos_mass[j_shared_load_idx];
-        } else {
-            s_pos_mass[threadIdx.x] = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
-        }
-        __syncthreads();
-
-        // 2. Loop de processamento pesado da matemática
-        #pragma unroll
-        for (int j_tile = 0; j_tile < blockDim.x; j_tile++) {
-            float4 p_j = s_pos_mass[j_tile];
-            if (p_j.w > 0.0f) {
-                // A matemática é executada 4 vezes simultaneamente dentro da unidade Lógica (ALU)
-                #pragma unroll
-                for (int c = 0; c < FACTOR; c++) {
-                    int idx = base_i + c * blockDim.x;
-                    if (idx < N && idx != (tile_idx * blockDim.x + j_tile)) {
-                        float dx = p_j.x - my_pos[c].x; float dy = p_j.y - my_pos[c].y; float dz = p_j.z - my_pos[c].z;
-                        float dist_sq = dx*dx + dy*dy + dz*dz;
-                        float inv_dist = rsqrtf(dist_sq + eps*eps);
-                        float forca = G * p_j.w * inv_dist * inv_dist * inv_dist;
-                        ax[c] += forca * dx; ay[c] += forca * dy; az[c] += forca * dz;
-                    }
-                }
-            }
-        }
-        __syncthreads();
-    }
-
-    // 3. Gravar resultados finais
-    #pragma unroll
-    for (int c = 0; c < FACTOR; c++) {
-        int idx = base_i + c * blockDim.x;
-        if (idx < N) {
-            acel[idx * 3 + 0] = ax[c]; acel[idx * 3 + 1] = ay[c]; acel[idx * 3 + 2] = az[c];
-        }
-    }
-}
-
 __global__ void post_update(float *vel, float *acel, float dt, int N) {
     // Este kernel implementa a segunda metade do integrador Leapfrog.
     // Ele recebe a aceleração recém-calculada (acel) e a velocidade de meio-passo
@@ -373,8 +302,7 @@ def _compilar_kernels():
             "naive": mod.get_function("calcular_aceleracoes_naive"),
             "naive_fast_math": mod.get_function("calcular_aceleracoes_naive_fast_math"),
             "shared_mem": mod.get_function("calcular_aceleracoes_shared_mem"),
-            "shared_mem_float4": mod.get_function("calcular_aceleracoes_shared_mem_float4"),
-            "shared_mem_coarsened": mod.get_function("calcular_aceleracoes_shared_mem_coarsened"),
+            "shared_mem_float4": mod.get_function("calcular_aceleracoes_shared_mem_float4")
         }
 
 def validar_energia_gpu(pos, vel, massas, G, eps):
@@ -424,7 +352,7 @@ def simular_n_corpos_gpu(pos, vel, massas, passos, dt, G, eps, method: str = "na
     cuda.memcpy_htod(vel_gpu, vel_flat)
     cuda.memcpy_htod(acel_gpu, acel_flat)
     
-    is_float4 = (method in ["shared_mem_float4", "shared_mem_coarsened"])
+    is_float4 = (method == "shared_mem_float4")
 
     if is_float4:
         # Empacotar Posições (X,Y,Z) e Massas (W) no mesmo array NumPy de (N, 4)
@@ -444,17 +372,9 @@ def simular_n_corpos_gpu(pos, vel, massas, passos, dt, G, eps, method: str = "na
 
     threads_por_bloco = THREADS_POR_BLOCO
     blocos_por_grid_normal = int(np.ceil(N / threads_por_bloco))
-    
-    # O kernel de coarsening precisa de menos blocos consoante o FACTOR
-    if method == "shared_mem_coarsened":
-        FACTOR = 2
-        blocos_por_grid_acel = int(np.ceil(N / (threads_por_bloco * FACTOR)))
-    else:
-        blocos_por_grid_acel = blocos_por_grid_normal
         
     block_dim = (threads_por_bloco, 1, 1)
     grid_dim_normal = (blocos_por_grid_normal, 1)
-    grid_dim_acel = (blocos_por_grid_acel, 1)
 
     if method not in kernels_aceleracao:
         raise ValueError(f"Método de kernel '{method}' desconhecido. Válidos: {list(kernels_aceleracao.keys())}")
@@ -463,9 +383,9 @@ def simular_n_corpos_gpu(pos, vel, massas, passos, dt, G, eps, method: str = "na
 
     # Aceleração inicial (t=0)
     if is_float4:
-        kernel_acel(pos_gpu, acel_gpu, N_numpy, np.float32(G), np.float32(eps), block=block_dim, grid=grid_dim_acel)
+        kernel_acel(pos_gpu, acel_gpu, N_numpy, np.float32(G), np.float32(eps), block=block_dim, grid=grid_dim_normal)
     else:
-        kernel_acel(pos_gpu, massas_gpu, acel_gpu, N_numpy, np.float32(G), np.float32(eps), block=block_dim, grid=grid_dim_acel)
+        kernel_acel(pos_gpu, massas_gpu, acel_gpu, N_numpy, np.float32(G), np.float32(eps), block=block_dim, grid=grid_dim_normal)
 
     # Sincronizar e iniciar cronómetro só para o ciclo
     cuda.Context.synchronize()
@@ -474,10 +394,10 @@ def simular_n_corpos_gpu(pos, vel, massas, passos, dt, G, eps, method: str = "na
     for _ in range(passos):
         if is_float4:
             pre_update_float4_gpu(pos_gpu, vel_gpu, acel_gpu, np.float32(dt), N_numpy, block=block_dim, grid=grid_dim_normal)
-            kernel_acel(pos_gpu, acel_gpu, N_numpy, np.float32(G), np.float32(eps), block=block_dim, grid=grid_dim_acel)
+            kernel_acel(pos_gpu, acel_gpu, N_numpy, np.float32(G), np.float32(eps), block=block_dim, grid=grid_dim_normal)
         else:
             pre_update_gpu(pos_gpu, vel_gpu, acel_gpu, np.float32(dt), N_numpy, block=block_dim, grid=grid_dim_normal)
-            kernel_acel(pos_gpu, massas_gpu, acel_gpu, N_numpy, np.float32(G), np.float32(eps), block=block_dim, grid=grid_dim_acel)
+            kernel_acel(pos_gpu, massas_gpu, acel_gpu, N_numpy, np.float32(G), np.float32(eps), block=block_dim, grid=grid_dim_normal)
             
         post_update_gpu(vel_gpu, acel_gpu, np.float32(dt), N_numpy, block=block_dim, grid=grid_dim_normal)
 
