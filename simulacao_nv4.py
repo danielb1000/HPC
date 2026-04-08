@@ -154,7 +154,7 @@ def worker_gpu_nvlink(gpu_id, num_gpus, N_total, vel_init_local, pos_init_all, p
         
         for passo in range(passos):
             kernel_pre(d_pos_mass_local, d_vel_local, d_acel_local, np.float32(dt), np.int32(N_local), block=block_dim, grid=grid_dim)
-            cuda.memcpy_dtod(int(d_pos_mass_all) + (offset * 16), d_pos_mass_local, N_local * 16)
+            cuda.memcpy_dtod_async(int(d_pos_mass_all) + (offset * 16), d_pos_mass_local, N_local * 16)
             
             barrier_step.wait() # Esperar pelo fim dos cálculos físicos locais
             
@@ -162,7 +162,7 @@ def worker_gpu_nvlink(gpu_id, num_gpus, N_total, vel_init_local, pos_init_all, p
             # GPUs para nos passarem os dados diretamente pela bridge NVLink (Device-to-Device).
             for peer_id, (peer_ptr, peer_offset, peer_N) in peer_buffers.items():
                 dest_ptr = int(d_pos_mass_all) + (peer_offset * 16)
-                cuda.memcpy_dtod(dest_ptr, peer_ptr, peer_N * 16)
+                cuda.memcpy_dtod_async(dest_ptr, peer_ptr, peer_N * 16)
                 
             cuda.Context.synchronize()
             
