@@ -15,10 +15,10 @@ from simulacao_nv4 import simular_n_corpos_nv4
 def gerar_tabela_multigpu_typst():
     # Valores massivos para demonstrar o ponto onde o overhead de comunicação é 
     # ultrapassado pelo poder bruto de paralelismo das 4 GPUs.
-    lista_N = [16384, 32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304] # Potências de 2 para alinhamento perfeito com blocos de 512 threads
+    lista_N = [32, 128, 256, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304, 8388608] # Potências de 2 para alinhamento perfeito com blocos 
     
     TAMANHO_CAIXA = False # O tamanho vai ser dinâmico para cada N_PARTICULAS
-    PASSOS_TEMPO = 20
+    PASSOS_TEMPO = 200
     DELTA_T = 0.01
     EPSILON = 1.0
     G = 1.0
