@@ -3,7 +3,7 @@ from pycuda.compiler import SourceModule
 import time
 import numpy as np
 
-THREADS_POR_BLOCO = 512 
+THREADS_POR_BLOCO = 256 
 
 kernel_code = """
 #define BLOCK_SIZE %d

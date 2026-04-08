@@ -6,7 +6,7 @@ from utilidades import gerar_condicoes_iniciais
 # Kernel exclusivo para Multi-GPU. 
 # Nota: Não importamos o pycuda globalmente para evitar o autoinit.
 KERNEL_CODE_MULTIGPU = """
-#define BLOCK_SIZE 1024
+#define BLOCK_SIZE 256
 
 __global__ void pre_update_multigpu(float4 *pos_mass_local, float *vel_local, float *acel_local, float dt, int N_local) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
@@ -135,8 +135,8 @@ def worker_gpu(gpu_id, num_gpus, N_total, vel_init_local, passos, dt, G, eps, sh
         cuda.memcpy_htod(d_pos_mass_local, pos_mass_local_host)
         cuda.memcpy_htod(d_vel_local, vel_local_host)
 
-        block_dim = (1024, 1, 1)
-        grid_dim = (int(np.ceil(N_local / 1024)), 1)
+        block_dim = (256, 1, 1)
+        grid_dim = (int(np.ceil(N_local / 256)), 1)
         
         # Aceleração Inicial (t=0)
         kernel_acel(d_pos_mass_all, d_pos_mass_local, d_acel_local, np.int32(N_total), np.int32(N_local), np.int32(offset), np.float32(G), np.float32(eps), block=block_dim, grid=grid_dim)

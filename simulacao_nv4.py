@@ -5,7 +5,7 @@ import time
 
 # Reutilizamos o mesmo kernel, a otimização está na forma como o Python orquestra a memória
 KERNEL_CODE_NV4 = """
-#define BLOCK_SIZE 1024
+#define BLOCK_SIZE 256
 
 __global__ void pre_update_multigpu(float4 *pos_mass_local, float *vel_local, float *acel_local, float dt, int N_local) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
@@ -145,8 +145,8 @@ def worker_gpu_nvlink(gpu_id, num_gpus, N_total, vel_init_local, pos_init_all, p
                 else:
                     print(f"Aviso GPU {gpu_id}: NVLink P2P não suportado para a GPU {peer_id}.")
 
-        block_dim = (1024, 1, 1)
-        grid_dim = (int(np.ceil(N_local / 1024)), 1)
+        block_dim = (256, 1, 1)
+        grid_dim = (int(np.ceil(N_local / 256)), 1)
         
         kernel_acel(d_pos_mass_all, d_pos_mass_local, d_acel_local, np.int32(N_total), np.int32(N_local), np.int32(offset), np.float32(G), np.float32(eps), block=block_dim, grid=grid_dim)
         cuda.Context.synchronize()
