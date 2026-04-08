@@ -5,7 +5,7 @@ import time
 
 # Reutilizamos o mesmo kernel, a otimização está na forma como o Python orquestra a memória
 KERNEL_CODE_NV4 = """
-#define BLOCK_SIZE 512
+#define BLOCK_SIZE 1024
 
 __global__ void pre_update_multigpu(float4 *pos_mass_local, float *vel_local, float *acel_local, float dt, int N_local) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
@@ -136,15 +136,17 @@ def worker_gpu_nvlink(gpu_id, num_gpus, N_total, vel_init_local, pos_init_all, p
             if peer_id != gpu_id:
                 peer_ptr, peer_offset, peer_N = pointers_dict[peer_id]
                 peer_ctx = contexts_dict[peer_id]
-                try:
-                    if dev.can_access_peer(cuda.Device(peer_id)):
+                if dev.can_access_peer(cuda.Device(peer_id)):
+                    try:
                         ctx.enable_peer_access(peer_ctx)
+                    except Exception:
+                        pass # Ignorar se o NVLink já estiver ativado
                     peer_buffers[peer_id] = (peer_ptr, peer_offset, peer_N)
-                except Exception as e:
-                    print(f"Aviso GPU {gpu_id}: NVLink P2P falhou para a GPU {peer_id}. {e}")
+                else:
+                    print(f"Aviso GPU {gpu_id}: NVLink P2P não suportado para a GPU {peer_id}.")
 
-        block_dim = (512, 1, 1)
-        grid_dim = (int(np.ceil(N_local / 512)), 1)
+        block_dim = (1024, 1, 1)
+        grid_dim = (int(np.ceil(N_local / 1024)), 1)
         
         kernel_acel(d_pos_mass_all, d_pos_mass_local, d_acel_local, np.int32(N_total), np.int32(N_local), np.int32(offset), np.float32(G), np.float32(eps), block=block_dim, grid=grid_dim)
         cuda.Context.synchronize()
@@ -163,6 +165,8 @@ def worker_gpu_nvlink(gpu_id, num_gpus, N_total, vel_init_local, pos_init_all, p
                 cuda.memcpy_dtod(dest_ptr, peer_ptr, peer_N * 16)
                 
             cuda.Context.synchronize()
+            
+            barrier_step.wait() # Aguardar que todos terminem as leituras P2P antes de avançar e modificar/libertar a memória
             
             kernel_acel(d_pos_mass_all, d_pos_mass_local, d_acel_local, np.int32(N_total), np.int32(N_local), np.int32(offset), np.float32(G), np.float32(eps), block=block_dim, grid=grid_dim)
             kernel_post(d_vel_local, d_acel_local, np.float32(dt), np.int32(N_local), block=block_dim, grid=grid_dim)
