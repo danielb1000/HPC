@@ -11,7 +11,7 @@ import pycuda.autoinit
 
 def gerar_tabela_typst():
     # Os valores de N que queremos testar
-    lista_N = [2, 8, 32, 256, 512, 1024, 2048, 8192, 16384, 32768] # Potências de 2 para alinhamento perfeito com blocos de 512 threads
+    lista_N = [2, 8, 32, 256, 512, 1024, 2048, 8192, 16384] # Potências de 2 para alinhamento perfeito com blocos de 512 threads
     
     # Constantes da simulação
     TAMANHO_CAIXA = False # O tamanho vai ser dinâmico para cada N_PARTICULAS
