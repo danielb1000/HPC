@@ -3,6 +3,14 @@ import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg')
 
+def calcular_tamanho_caixa_dinamico(N_particulas, densidade_alvo=0.002):
+    """
+    Calcula o tamanho da caixa de simulação dinamicamente para manter uma densidade constante.
+    Evita que Ns pequenos fiquem demasiado dispersos e Ns grandes explodam em NaNs.
+    """
+    return np.cbrt(N_particulas / densidade_alvo)
+
+
 def gerar_condicoes_iniciais(N, tamanho_caixa=100.0, massa_min=10.0, massa_max=50.0,velocidade_min=-0.5 ,velocidade_max=0.5):
     """
     Gera as condições iniciais aleatórias para N partículas.
@@ -41,3 +49,27 @@ def desenhar_grafico_n_corpos(historico_posicoes, massas, titulo="Simulação N-
     plt.savefig(f"{N}_corpos_orbitas.png", dpi=300, pad_inches=0)
     print(f"figure saved as {N}_corpos_orbitas.png")
     # plt.show()
+
+def gerar_grafico_performance(nome_ficheiro, lista_n, **series_dados):
+    """
+    Gera um gráfico de performance genérico a partir de um dicionário de séries de dados.
+
+    Args:
+        nome_ficheiro (str): Nome do ficheiro para guardar o gráfico.
+        lista_n (list): Lista de valores para o eixo X (e.g., número de partículas).
+        **series_dados: Dicionário onde a chave é o label da série e o valor é uma
+                        lista de tempos de execução. Ex: {'CPU': tempos_cpu, 'GPU': tempos_gpu}
+    """
+    plt.figure(figsize=(10, 6))
+    for label, tempos in series_dados.items():
+        plt.plot(lista_n, tempos, marker='o', label=label)
+
+    plt.yscale('log', base=10)
+    plt.xlabel('Número de Partículas (N)')
+    plt.ylabel('Tempo de Execução (s)')
+    plt.title('Tempo de Execução vs Número de Partículas')
+    plt.legend()
+    plt.grid(True, which="both", ls="--", alpha=0.5)
+    plt.tight_layout()
+    plt.savefig(nome_ficheiro, dpi=300)
+    print(f"Gráfico gerado e guardado como '{nome_ficheiro}'")

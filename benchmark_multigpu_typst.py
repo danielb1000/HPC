@@ -3,6 +3,7 @@ import numpy as np
 import multiprocessing as mp
 import pycuda.driver as cuda
 from utilidades import gerar_condicoes_iniciais
+from utilidades import calcular_tamanho_caixa_dinamico
 from simulacao_gpu import simular_n_corpos_gpu, validar_energia_gpu
 from simulacao_multigpu import simular_n_corpos_multigpu
 from simulacao_nv4 import simular_n_corpos_nv4
@@ -16,16 +17,7 @@ def gerar_tabela_multigpu_typst():
     # Valores massivos para demonstrar o ponto onde o overhead de comunicação é 
     # ultrapassado pelo poder bruto de paralelismo das 4 GPUs.
     lista_N = [32, 128, 256, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304, 8388608] # Potências de 2 para alinhamento perfeito com blocos 
-    
-    TAMANHO_CAIXA = False # O tamanho vai ser dinâmico para cada N_PARTICULAS
-    PASSOS_TEMPO = 200
-    DELTA_T = 0.01
-    EPSILON = 1.0
-    G = 1.0
-    MASSA_MIN = 10.0
-    MASSA_MAX = 50.0
-    VELOCIDADE_MIN = -1.0
-    VELOCIDADE_MAX = 1.0
+    from constants import PASSOS_TEMPO, DELTA_T, EPSILON, G, MASSA_MIN, MASSA_MAX, VELOCIDADE_MIN, VELOCIDADE_MAX, DENSIDADE_ALVO
 
     cuda.init()
     num_gpus = cuda.Device.count()
@@ -46,11 +38,10 @@ def gerar_tabela_multigpu_typst():
             f.write("    [*N*], [*1-GPU\ `float4` (s)*], [*Multi PCIe (s)*],  [*Multi NVLink (s)*], [*Speedup PCIe*], [*Speedup NVLink*], [*Desvio\ Máx.*], [*Erro\ Energia*],\n")
 
             for N_PARTICULAS in lista_N:
-                # Calcular tamanho da caixa dinamicamente para manter densidade constante (~0.002)
-                # Evita que Ns pequenos fiquem demasiado dispersos e Ns grandes explodam em NaNs.
-                TAMANHO_CAIXA = np.cbrt(N_PARTICULAS / 0.002)
+                # Calcular tamanho da caixa dinamicamente
+                TAMANHO_CAIXA = calcular_tamanho_caixa_dinamico(N_PARTICULAS, DENSIDADE_ALVO)
 
-                np.random.seed(42)
+                np.random.seed(42) # Seed fixa para reprodutibilidade
                 massas, posicoes, velocidades = gerar_condicoes_iniciais(
                     N_PARTICULAS, TAMANHO_CAIXA, MASSA_MIN, MASSA_MAX, VELOCIDADE_MIN, VELOCIDADE_MAX
                 )

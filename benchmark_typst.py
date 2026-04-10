@@ -1,9 +1,11 @@
 import time
 import numpy as np
-from utilidades import gerar_condicoes_iniciais
+from utilidades import gerar_condicoes_iniciais, gerar_grafico_performance, calcular_tamanho_caixa_dinamico
 from simulacao_cpu import simular_n_corpos_cpu
 from simulacao_gpu import simular_n_corpos_gpu, validar_energia_gpu
 import pycuda.autoinit
+#
+
 #
 # benchmark para gerar a tabela de resultados para o Typst antes de otimizacoes finais ()
 # Este script é independente do main.py e do benchmark_stress_gpu.py.
@@ -11,20 +13,19 @@ import pycuda.autoinit
 
 def gerar_tabela_typst():
     # Os valores de N que queremos testar
-    lista_N = [2, 8, 32, 256, 512, 1024, 2048, 8192, 16384] # Potências de 2 para alinhamento perfeito com blocos de 512 threads
+    lista_N = [2, 8, 32, 256, 512, 1024] # Potências de 2 para alinhamento perfeito com blocos de 512 threads
     
-    # Constantes da simulação
-    TAMANHO_CAIXA = False # O tamanho vai ser dinâmico para cada N_PARTICULAS
-    PASSOS_TEMPO = 200
-    DELTA_T = 0.01
-    EPSILON = 1.0
-    G = 1.0
-    MASSA_MIN = 10.0
-    MASSA_MAX = 50.0
-    VELOCIDADE_MIN = -1.0
-    VELOCIDADE_MAX = 1.0
+    from constants import PASSOS_TEMPO, DELTA_T, EPSILON, G, MASSA_MIN, MASSA_MAX, VELOCIDADE_MIN, VELOCIDADE_MAX, DENSIDADE_ALVO
 
     print("A iniciar o benchmark. Isto pode demorar alguns minutos...")
+
+    # Listas para armazenar os tempos de execução de cada implementação
+    tempos_cpu = []
+    tempos_gpu_naive = []
+    tempos_gpu_fm = []
+    tempos_gpu_sm = []
+    tempos_gpu_f4 = []
+
     
     with open("tabela_typst.txt", "w", encoding="utf-8") as f:
         f.write("  #align(center)[\n")
@@ -32,14 +33,13 @@ def gerar_tabela_typst():
         f.write("    columns: (auto, auto, auto, auto, auto, auto, auto, auto),\n")
         f.write("    inset: 5pt,\n")
         f.write("    align: horizon,\n")
-        f.write("    [*N-Corpos*], [*t_CPU (s)*], [*Speedup\\ naive*], [*Speedup\\ fast math*], [*Speedup\\ Mem. Part.*], [*Speedup\\ vetores `float4`*],[*Desvio\\ Máx. *], [*Erro\\ Energia*],\n")
+        f.write(r"    [*N-Corpos*], [*t_CPU (s)*], [*Speedup\ naive*], [*Speedup\ fast math*], [*Speedup\ Mem. Part.*], [*Speedup\ vetores `float4`*],[*Desvio\ Máx. *], [*Erro\ Energia*]" + "\n")
 
         for N_PARTICULAS in lista_N:
-            # Calcular tamanho da caixa dinamicamente para manter densidade constante (~0.002)
-            # Evita que Ns pequenos fiquem demasiado dispersos e Ns grandes explodam em NaNs.
-            TAMANHO_CAIXA = np.cbrt(N_PARTICULAS / 0.002)
+            # Calcular tamanho da caixa dinamicamente
+            TAMANHO_CAIXA = calcular_tamanho_caixa_dinamico(N_PARTICULAS, DENSIDADE_ALVO)
 
-            np.random.seed(42) # Seed fixa para cada N ser consistente
+            np.random.seed(42) # Seed fixa para cada N ser consistente para reprodutibilidade
             massas, posicoes, velocidades = gerar_condicoes_iniciais(
                 N_PARTICULAS, TAMANHO_CAIXA, MASSA_MIN, MASSA_MAX, VELOCIDADE_MIN, VELOCIDADE_MAX
             )
@@ -51,18 +51,22 @@ def gerar_tabela_typst():
             inicio_cpu = time.perf_counter()
             simular_n_corpos_cpu(pos_cpu, velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, guardar_historico=False)
             t_cpu = time.perf_counter() - inicio_cpu
+            tempos_cpu.append(t_cpu)
 
             # 2. GPU Naive
             _, _, t_gpu_naive = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='naive')
+            tempos_gpu_naive.append(t_gpu_naive)
 
             # 3. GPU Naive Fast Math
             _, _, t_gpu_fm = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='naive_fast_math')
+            tempos_gpu_fm.append(t_gpu_fm)
 
-            # 4. GPU Shared Memory
+            # 4. GPU Fast Math + Shared Memory
             _, _, t_gpu_sm = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='shared_mem')
-
-            # 5. GPU Float4
+            tempos_gpu_sm.append(t_gpu_sm)
+            # 5. GPU Fast Math + Shared Memory + Float4
             pos_gpu_f4, vel_gpu_f4, t_gpu_f4 = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='shared_mem_float4')
+            tempos_gpu_f4.append(t_gpu_f4)
 
             desvio = np.max(np.abs(pos_cpu - pos_gpu_f4))
             
@@ -81,6 +85,16 @@ def gerar_tabela_typst():
         f.write("  ]\n")
         
     print("\nSUCESSO! Tabela gerada e guardada no ficheiro 'tabela_typst.txt'")
+
+
+    # Gerar o gráfico de performance
+    series_para_plotar = {
+        'CPU': tempos_cpu,
+        'GPU Naive': tempos_gpu_naive,
+        'GPU Optimized': tempos_gpu_f4
+    }
+    gerar_grafico_performance('grafico_performance_single_gpu.png', lista_N, **series_para_plotar)
+
 
 if __name__ == "__main__":
     gerar_tabela_typst()
