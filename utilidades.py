@@ -50,7 +50,7 @@ def desenhar_grafico_n_corpos(historico_posicoes, massas, titulo="Simulação N-
     print(f"figure saved as {N}_corpos_orbitas.png")
     # plt.show()
 
-def gerar_grafico_performance(nome_ficheiro, lista_n, **series_dados):
+def gerar_grafico_CPU_vs_GPU_vs_GPU_Optimized(nome_ficheiro, lista_n, **series_dados):
     """
     Gera um gráfico de performance genérico a partir de um dicionário de séries de dados.
 
@@ -73,3 +73,61 @@ def gerar_grafico_performance(nome_ficheiro, lista_n, **series_dados):
     plt.tight_layout()
     plt.savefig(nome_ficheiro, dpi=300)
     print(f"Gráfico gerado e guardado como '{nome_ficheiro}'")
+
+def gerar_tabela_typst_single_gpu(nome_ficheiro, resultados):
+    """
+    Gera uma tabela formatada para Typst com os resultados do benchmark single-GPU.
+
+    Args:
+        nome_ficheiro (str): O nome do ficheiro de saída.
+        resultados (list[dict]): Uma lista de dicionários, onde cada dicionário
+                                 contém os resultados para um valor de N.
+    """
+    with open(nome_ficheiro, "w", encoding="utf-8") as f:
+        f.write("  #align(center)[\n")
+        f.write("  #table(\n")
+        f.write("    columns: (auto, auto, auto, auto, auto, auto, auto, auto),\n")
+        f.write("    inset: 5pt,\n")
+        f.write("    align: horizon,\n")
+        f.write(r"    [*N-Corpos*], [*t_CPU (s)*], [*Speedup\ naive*], [*Speedup\ fast math*], [*Speedup\ Mem. Part.*], [*Speedup\ vetores `float4`*],[*Desvio\ Máx. *], [*Erro\ Energia*]," + "\n")
+
+        for res in resultados:
+            f.write(
+                f"    [{res['N']}], [{res['t_cpu']:.4f}], "
+                f"[{res['speedup_naive']:.2f}x], [{res['speedup_fm']:.2f}x], "
+                f"[{res['speedup_sm']:.2f}x], [{res['speedup_f4']:.2f}x], "
+                f"[{res['desvio']:.6f}], [{res['erro_energia']:.5f}%],\n"
+            )
+
+        f.write("  )\n")
+        f.write("  ]\n")
+    print(f"\nSUCESSO! Tabela gerada e guardada no ficheiro '{nome_ficheiro}'")
+
+def gerar_tabela_typst_multi_gpu(nome_ficheiro, resultados):
+    """
+    Gera uma tabela formatada para Typst com os resultados do benchmark multi-GPU.
+
+    Args:
+        nome_ficheiro (str): O nome do ficheiro de saída.
+        resultados (list[dict]): Uma lista de dicionários, onde cada dicionário
+                                 contém os resultados para um valor de N.
+    """
+    with open(nome_ficheiro, "w", encoding="utf-8") as f:
+        f.write("  #align(center)[\n")
+        f.write("  #table(\n")
+        f.write("    columns: (auto, auto, auto, auto, auto, auto, auto, auto),\n")
+        f.write("    inset: 5pt,\n")
+        f.write("    align: horizon,\n")
+        f.write(r"    [*N*], [*1-GPU\ `float4` (s)*], [*Multi PCIe (s)*],  [*Multi NVLink (s)*], [*Speedup PCIe*], [*Speedup NVLink*], [*Desvio\ Máx.*], [*Erro\ Energia*]," + "\n")
+
+        for res in resultados:
+            f.write(
+                f"    [{res['N']}], [{res['t_1gpu']:.4f}], [{res['t_multigpu']:.4f}], "
+                f"[{res['t_nv4']:.4f}], [*{res['speedup_multi']:.2f}x*], "
+                f"[*{res['speedup_nv4']:.2f}x*], [{res['desvio']:.6f}], "
+                f"[{res['erro_energia']:.5f}%],\n"
+            )
+
+        f.write("  )\n")
+        f.write("  ]\n")
+    print(f"\nSUCESSO! Tabela gerada e guardada no ficheiro '{nome_ficheiro}'")

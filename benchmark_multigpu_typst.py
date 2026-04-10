@@ -2,8 +2,8 @@ import time
 import numpy as np
 import multiprocessing as mp
 import pycuda.driver as cuda
-from utilidades import gerar_condicoes_iniciais
-from utilidades import calcular_tamanho_caixa_dinamico
+from utilidades import (gerar_condicoes_iniciais, calcular_tamanho_caixa_dinamico, 
+                        gerar_tabela_typst_multi_gpu)
 from simulacao_gpu import simular_n_corpos_gpu, validar_energia_gpu
 from simulacao_multigpu import simular_n_corpos_multigpu
 from simulacao_nv4 import simular_n_corpos_nv4
@@ -13,7 +13,7 @@ from simulacao_nv4 import simular_n_corpos_nv4
 # e exportar os resultados formatados para o relatório Typst.
 # 
 
-def gerar_tabela_multigpu_typst():
+def executar_benchmark_multi_gpu():
     # Valores massivos para demonstrar o ponto onde o overhead de comunicação é 
     # ultrapassado pelo poder bruto de paralelismo das 4 GPUs.
     lista_N = [32, 128, 256, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304, 8388608] # Potências de 2 para alinhamento perfeito com blocos 
@@ -25,55 +25,71 @@ def gerar_tabela_multigpu_typst():
     print(f"A iniciar o benchmark Typst para Multi-GPU ({num_gpus} GPUs detetadas).")
     print("Isto pode demorar alguns minutos...\n")
     
+    # Estrutura para definir as simulações a serem executadas em ciclo
+    simulations_to_run = [
+        ('1gpu', simular_n_corpos_gpu, {'method': 'shared_mem_float4'}),
+        ('multigpu', simular_n_corpos_multigpu, {'num_gpus_ativas': num_gpus}),
+        ('nv4', simular_n_corpos_nv4, {'num_gpus_ativas': num_gpus})
+    ]
+
     # Contexto principal isolado para a simulação 1-GPU e cálculos de energia
     ctx = cuda.Device(0).make_context()
+
+    # Lista para armazenar os resultados de forma estruturada para a tabela
+    resultados_tabela = []
     
     try:
-        with open("tabela_multigpu_typst.txt", "w", encoding="utf-8") as f:
-            f.write("  #align(center)[\n")
-            f.write("  #table(\n")
-            f.write("    columns: (auto, auto, auto, auto, auto, auto, auto, auto),\n")
-            f.write("    inset: 5pt,\n")
-            f.write("    align: horizon,\n")
-            f.write("    [*N*], [*1-GPU\ `float4` (s)*], [*Multi PCIe (s)*],  [*Multi NVLink (s)*], [*Speedup PCIe*], [*Speedup NVLink*], [*Desvio\ Máx.*], [*Erro\ Energia*],\n")
+        for N_PARTICULAS in lista_N:
+            # Calcular tamanho da caixa dinamicamente
+            TAMANHO_CAIXA = calcular_tamanho_caixa_dinamico(N_PARTICULAS, DENSIDADE_ALVO)
 
-            for N_PARTICULAS in lista_N:
-                # Calcular tamanho da caixa dinamicamente
-                TAMANHO_CAIXA = calcular_tamanho_caixa_dinamico(N_PARTICULAS, DENSIDADE_ALVO)
-
-                np.random.seed(42) # Seed fixa para reprodutibilidade
-                massas, posicoes, velocidades = gerar_condicoes_iniciais(
-                    N_PARTICULAS, TAMANHO_CAIXA, MASSA_MIN, MASSA_MAX, VELOCIDADE_MIN, VELOCIDADE_MAX
-                )
-                
-                energia_inicial = validar_energia_gpu(posicoes, velocidades, massas, G, EPSILON)
-
-                # 1. Baseline HPC: 1 GPU Otimização Máxima (Float4)
-                pos_1gpu, vel_1gpu, t_1gpu = simular_n_corpos_gpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, method='shared_mem_float4')
-
-                # 2. Distribuído: 4 GPUs
-                pos_multigpu, vel_multigpu, t_multigpu = simular_n_corpos_multigpu(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, num_gpus_ativas=num_gpus)
-
-                # 3. NVLink P2P: 4 GPUs
-                pos_nv4, vel_nv4, t_nv4 = simular_n_corpos_nv4(posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, num_gpus_ativas=num_gpus)
-
-                # Validações Físicas
-                desvio_multigpu = np.max(np.abs(pos_1gpu - pos_multigpu))
-                desvio_nv4 = np.max(np.abs(pos_1gpu - pos_nv4))
-                desvio = max(desvio_multigpu, desvio_nv4)
-
-                energia_final = validar_energia_gpu(pos_nv4, vel_nv4, massas, G, EPSILON)
-                erro_energia = abs((energia_final - energia_inicial) / energia_inicial) * 100
-                speedup_multi = t_1gpu / t_multigpu
-                speedup_nv4 = t_1gpu / t_nv4
-
-                f.write(f"    [{N_PARTICULAS}], [{t_1gpu:.4f}], [{t_multigpu:.4f}], [{t_nv4:.4f}], [*{speedup_multi:.2f}x*], [*{speedup_nv4:.2f}x*], [{desvio:.6f}], [{erro_energia:.5f}%],\n")
-                print(f" -> Concluído benchmark para N = {N_PARTICULAS} | Speedup Multi-GPU: {speedup_multi:.2f}x | Speedup NVLink: {speedup_nv4:.2f}x")
-
-            f.write("  )\n")
-            f.write("  ]\n")
+            np.random.seed(42) # Seed fixa para reprodutibilidade
+            massas, posicoes, velocidades = gerar_condicoes_iniciais(
+                N_PARTICULAS, TAMANHO_CAIXA, MASSA_MIN, MASSA_MAX, VELOCIDADE_MIN, VELOCIDADE_MAX
+            )
             
-        print("\nSUCESSO! Tabela gerada e guardada no ficheiro 'tabela_multigpu_typst.txt'")
+            energia_inicial = validar_energia_gpu(posicoes, velocidades, massas, G, EPSILON)
+
+            # Dicionários para armazenar os resultados desta iteração de N
+            tempos_n = {}
+            posicoes_finais_n = {}
+            velocidades_finais_n = {}
+
+            # Executar todas as simulações definidas em `simulations_to_run`
+            for key, func, kwargs in simulations_to_run:
+                pos_final, vel_final, tempo = func(
+                    posicoes.copy(), velocidades.copy(), massas, 
+                    PASSOS_TEMPO, DELTA_T, G, EPSILON, **kwargs
+                )
+                tempos_n[key] = tempo
+                posicoes_finais_n[key] = pos_final
+                velocidades_finais_n[key] = vel_final
+
+            # Validações Físicas
+            desvio_multigpu = np.max(np.abs(posicoes_finais_n['1gpu'] - posicoes_finais_n['multigpu']))
+            desvio_nv4 = np.max(np.abs(posicoes_finais_n['1gpu'] - posicoes_finais_n['nv4']))
+            desvio = max(desvio_multigpu, desvio_nv4)
+
+            energia_final = validar_energia_gpu(posicoes_finais_n['nv4'], velocidades_finais_n['nv4'], massas, G, EPSILON)
+            erro_energia = abs((energia_final - energia_inicial) / energia_inicial) * 100
+            speedup_multi = tempos_n['1gpu'] / tempos_n['multigpu']
+            speedup_nv4 = tempos_n['1gpu'] / tempos_n['nv4']
+
+            # Guardar resultados para a tabela
+            resultados_tabela.append({
+                'N': N_PARTICULAS,
+                't_1gpu': tempos_n['1gpu'],
+                't_multigpu': tempos_n['multigpu'],
+                't_nv4': tempos_n['nv4'],
+                'speedup_multi': speedup_multi,
+                'speedup_nv4': speedup_nv4,
+                'desvio': desvio,
+                'erro_energia': erro_energia
+            })
+            print(f" -> Concluído benchmark para N = {N_PARTICULAS} | Speedup Multi-GPU: {speedup_multi:.2f}x | Speedup NVLink: {speedup_nv4:.2f}x")
+
+        # Gerar a tabela Typst usando a função de utilidade
+        gerar_tabela_typst_multi_gpu("tabela_multigpu_typst.txt", resultados_tabela)
     finally:
         ctx.pop()
 
@@ -82,4 +98,4 @@ if __name__ == "__main__":
         mp.set_start_method('spawn')
     except RuntimeError:
         pass
-    gerar_tabela_multigpu_typst()
+    executar_benchmark_multi_gpu()
