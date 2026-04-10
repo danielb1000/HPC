@@ -4,7 +4,7 @@ import multiprocessing as mp
 import pycuda.driver as cuda
 from utilidades import (gerar_condicoes_iniciais, calcular_tamanho_caixa_dinamico, 
                         gerar_tabela_typst_multi_gpu,
-                        gerar_grafico_CPU_vs_GPU_vs_GPU_Optimized)
+                        gerar_grafico_tempo)
 from simulacao_gpu import simular_n_corpos_gpu, validar_energia_gpu
 from simulacao_multigpu import simular_n_corpos_multigpu
 from simulacao_nv4 import simular_n_corpos_nv4
@@ -17,7 +17,7 @@ from simulacao_nv4 import simular_n_corpos_nv4
 def executar_benchmark_multi_gpu():
     # Valores massivos para demonstrar o ponto onde o overhead de comunicação é 
     # ultrapassado pelo poder bruto de paralelismo das 4 GPUs.
-    lista_N = [32, 128, 256, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304, 8388608] # Potências de 2 para alinhamento perfeito com blocos 
+    lista_N = [32, 128, 256, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144] # Potências de 2 para alinhamento perfeito com blocos 
     from constants import PASSOS_TEMPO, DELTA_T, EPSILON, G, MASSA_MIN, MASSA_MAX, VELOCIDADE_MIN, VELOCIDADE_MAX, DENSIDADE_ALVO
 
     cuda.init()
@@ -99,7 +99,7 @@ def executar_benchmark_multi_gpu():
             print(f" -> Concluído benchmark para N = {N_PARTICULAS} | Speedup Multi-GPU: {speedup_multi:.2f}x | Speedup NVLink: {speedup_nv4:.2f}x")
 
         # Gerar a tabela Typst usando a função de utilidade
-        gerar_tabela_typst_multi_gpu("tabela_multigpu_typst.txt", resultados_tabela)
+        gerar_tabela_typst_multi_gpu("benchmark_multigpu_performance.txt", resultados_tabela)
         
         # Gerar o gráfico de performance
         series_para_plotar = {
@@ -107,7 +107,7 @@ def executar_benchmark_multi_gpu():
             'Multi-GPU (PCIe)': tempos_para_grafico['multigpu'],
             'Multi-GPU (NVLink)': tempos_para_grafico['nv4']
         }
-        gerar_grafico_CPU_vs_GPU_vs_GPU_Optimized('benchmark_multigpu_performance.png', lista_N, **series_para_plotar)
+        gerar_grafico_tempo('benchmark_multigpu_performance.png', lista_N, log_y=False, log_x=False, **series_para_plotar)
         
     finally:
         ctx.pop()

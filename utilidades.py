@@ -50,7 +50,7 @@ def desenhar_grafico_n_corpos(historico_posicoes, massas, titulo="Simulação N-
     print(f"figure saved as {N}_corpos_orbitas.png")
     # plt.show()
 
-def gerar_grafico_CPU_vs_GPU_vs_GPU_Optimized(nome_ficheiro, lista_n, **series_dados):
+def gerar_grafico_tempo(nome_ficheiro, lista_n, **series_dados):
     """
     Gera um gráfico de performance genérico a partir de um dicionário de séries de dados.
 
@@ -61,10 +61,18 @@ def gerar_grafico_CPU_vs_GPU_vs_GPU_Optimized(nome_ficheiro, lista_n, **series_d
                         lista de tempos de execução. Ex: {'CPU': tempos_cpu, 'GPU': tempos_gpu}
     """
     plt.figure(figsize=(10, 6))
+
+    log_y = series_dados.pop('log_y', True)
+    log_x = series_dados.pop('log_x', True)
+    
+
     for label, tempos in series_dados.items():
         plt.plot(lista_n, tempos, marker='o', label=label)
 
-    plt.yscale('log', base=10)
+    if log_y:
+        plt.yscale('log', base=10)
+    if log_x:
+        plt.xscale('log', base=2)
     plt.xlabel('Número de Partículas (N)')
     plt.ylabel('Tempo de Execução (s)')
     plt.title('Tempo de Execução vs Número de Partículas')

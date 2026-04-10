@@ -1,6 +1,6 @@
 import time
 import numpy as np
-from utilidades import (gerar_condicoes_iniciais, gerar_grafico_CPU_vs_GPU_vs_GPU_Optimized, 
+from utilidades import (gerar_condicoes_iniciais, gerar_grafico_tempo, 
                         calcular_tamanho_caixa_dinamico, gerar_tabela_typst_single_gpu)
 from simulacao_cpu import simular_n_corpos_cpu
 from simulacao_gpu import simular_n_corpos_gpu, validar_energia_gpu
@@ -26,7 +26,7 @@ def executar_benchmark_single_gpu():
         'shared_mem': True,         # PyCUDA - Shared Memory + Fast Math
         'shared_mem_float4': True,  # PyCUDA - Shared Mem + Fast Math + Float4 Vector
     }
-    
+
     # Dicionário para armazenar listas de tempos para o gráfico
     tempos_para_grafico = {metodo: [] for metodo, executar in metodos_gpu.items() if executar}
     tempos_para_grafico['cpu'] = []
@@ -98,7 +98,7 @@ def executar_benchmark_single_gpu():
     if 'shared_mem_float4' in tempos_para_grafico:
         series_para_plotar['GPU Optimized'] = tempos_para_grafico['shared_mem_float4']
         
-    gerar_grafico_CPU_vs_GPU_vs_GPU_Optimized('benchmark_CPU_vs_GPU_vs_GPU_Optimized.png', lista_N, **series_para_plotar)
+    gerar_grafico_tempo('benchmark_CPU_vs_GPU_vs_GPU_Optimized.png', lista_N, log_y=True, log_x=False, **series_para_plotar)
 
 
 if __name__ == "__main__":
