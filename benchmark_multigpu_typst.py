@@ -3,7 +3,8 @@ import numpy as np
 import multiprocessing as mp
 import pycuda.driver as cuda
 from utilidades import (gerar_condicoes_iniciais, calcular_tamanho_caixa_dinamico, 
-                        gerar_tabela_typst_multi_gpu)
+                        gerar_tabela_typst_multi_gpu,
+                        gerar_grafico_CPU_vs_GPU_vs_GPU_Optimized)
 from simulacao_gpu import simular_n_corpos_gpu, validar_energia_gpu
 from simulacao_multigpu import simular_n_corpos_multigpu
 from simulacao_nv4 import simular_n_corpos_nv4
@@ -37,6 +38,9 @@ def executar_benchmark_multi_gpu():
 
     # Lista para armazenar os resultados de forma estruturada para a tabela
     resultados_tabela = []
+    
+    # Dicionário para armazenar listas de tempos para o gráfico
+    tempos_para_grafico = {'1gpu': [], 'multigpu': [], 'nv4': []}
     
     try:
         for N_PARTICULAS in lista_N:
@@ -86,10 +90,25 @@ def executar_benchmark_multi_gpu():
                 'desvio': desvio,
                 'erro_energia': erro_energia
             })
+            
+            # Adicionar tempos às listas para o gráfico
+            tempos_para_grafico['1gpu'].append(tempos_n['1gpu'])
+            tempos_para_grafico['multigpu'].append(tempos_n['multigpu'])
+            tempos_para_grafico['nv4'].append(tempos_n['nv4'])
+            
             print(f" -> Concluído benchmark para N = {N_PARTICULAS} | Speedup Multi-GPU: {speedup_multi:.2f}x | Speedup NVLink: {speedup_nv4:.2f}x")
 
         # Gerar a tabela Typst usando a função de utilidade
         gerar_tabela_typst_multi_gpu("tabela_multigpu_typst.txt", resultados_tabela)
+        
+        # Gerar o gráfico de performance
+        series_para_plotar = {
+            '1-GPU (Float4)': tempos_para_grafico['1gpu'],
+            'Multi-GPU (PCIe)': tempos_para_grafico['multigpu'],
+            'Multi-GPU (NVLink)': tempos_para_grafico['nv4']
+        }
+        gerar_grafico_CPU_vs_GPU_vs_GPU_Optimized('benchmark_multigpu_performance.png', lista_N, **series_para_plotar)
+        
     finally:
         ctx.pop()
 
