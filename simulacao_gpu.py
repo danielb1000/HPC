@@ -293,7 +293,7 @@ def _compilar_kernels():
     """Compila os kernels apenas quando necessário (Lazy Compilation). Evita crash de contexto ao ser importado."""
     global mod, pre_update_gpu, pre_update_float4_gpu, post_update_gpu, kernels_aceleracao
     if mod is None:
-        mod = SourceModule(kernel_code, options=["-Xptxas", "-v", "-O3"])
+        mod = SourceModule(kernel_code, options=["-Xptxas", "-v", "-O3"], cache_dir=None)
         pre_update_gpu = mod.get_function("pre_update")
         pre_update_float4_gpu = mod.get_function("pre_update_float4")
         post_update_gpu = mod.get_function("post_update")

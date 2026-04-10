@@ -100,7 +100,7 @@ def worker_gpu_nvlink(gpu_id, num_gpus, N_total, vel_init_local, pos_init_all, p
     contexts_dict[gpu_id] = ctx
     
     try:
-        mod = SourceModule(KERNEL_CODE_NV4, options=["-Xptxas", "-v", "-O3"])
+        mod = SourceModule(KERNEL_CODE_NV4, options=["-Xptxas", "-v", "-O3"], cache_dir=None)
         kernel_acel = mod.get_function("calcular_aceleracoes_multigpu")
         kernel_pre = mod.get_function("pre_update_multigpu")
         kernel_post = mod.get_function("post_update_multigpu")

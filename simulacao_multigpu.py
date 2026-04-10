@@ -108,7 +108,7 @@ def worker_gpu(gpu_id, num_gpus, N_total, vel_init_local, passos, dt, G, eps, sh
     
     try:
         # Compilar Kernels
-        mod = SourceModule(KERNEL_CODE_MULTIGPU, options=["-Xptxas", "-v", "-O3"])
+        mod = SourceModule(KERNEL_CODE_MULTIGPU, options=["-Xptxas", "-v", "-O3"], cache_dir=None)
         kernel_acel = mod.get_function("calcular_aceleracoes_multigpu")
         kernel_pre = mod.get_function("pre_update_multigpu")
         kernel_post = mod.get_function("post_update_multigpu")
