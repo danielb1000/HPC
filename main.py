@@ -7,8 +7,7 @@ from engines.multigpu import simular_n_corpos_multigpu
 from engines.nv4 import simular_n_corpos_nv4
 import numpy as np
 import pycuda.driver as cuda
-from constants import DELTA_T, PASSOS_TEMPO, EPSILON, G, MASSA_MIN, MASSA_MAX, VELOCIDADE_MIN, VELOCIDADE_MAX, DENSIDADE_ALVO
-
+from constants import *
 
 def main():
     N_PARTICULAS = 3    # Aumentado para saturar a GPU (ex: 8192, 16384, 32768)
