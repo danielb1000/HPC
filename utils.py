@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
+from constants import MASSA_MIN, MASSA_MAX, VELOCIDADE_MIN, VELOCIDADE_MAX
 matplotlib.use('Agg')
 
 def calcular_tamanho_caixa_dinamico(N_particulas, densidade_alvo=0.002):
@@ -21,6 +22,44 @@ def gerar_condicoes_iniciais(N, tamanho_caixa=100.0, massa_min=10.0, massa_max=5
     velocidades = np.random.uniform(velocidade_min, velocidade_max, (N, 3)).astype(np.float32) # Velocidades random entre velocidade_min e velocidade_max
     
     return massas, posicoes, velocidades
+
+def gerar_condicoes_iniciais_clusters(N, num_clusters=2, tamanho_caixa=50.0, dispersao_posicao=10.0, dispersao_velocidade=0.01):
+    """
+    Gera posições, velocidades e massas agrupadas em clusters (aglomerados).
+    
+    :param n_corpos: Número total de partículas na simulação.
+    :param num_clusters: Quantidade de aglomerados para gerar.
+    :param tamanho_caixa: O espaço dentro do qual os centros dos clusters serão espalhados.
+    :param dispersao_posicao: Quão 'espalhado' o cluster é (desvio padrão da posição).
+    :param dispersao_velocidade: Quão caóticas são as velocidades dentro do cluster.
+    """
+    posicoes = np.zeros((N, 3), dtype=np.float32)
+    velocidades = np.zeros((N, 3), dtype=np.float32)
+    massas = np.random.uniform(MASSA_MIN, MASSA_MAX, N).astype(np.float32)
+    
+    particulas_por_cluster = N // num_clusters
+    
+    for i in range(num_clusters):
+        inicio = i * particulas_por_cluster
+        # O último cluster recebe qualquer sobra de partículas caso a divisão não seja exata
+        fim = N if i == num_clusters - 1 else (i + 1) * particulas_por_cluster
+        n_particulas_aqui = fim - inicio
+        
+        # 1. Definir o centro deste cluster e a sua velocidade "média" (direção de movimento do cluster inteiro)
+        centro_cluster = np.random.uniform(-tamanho_caixa / 2, tamanho_caixa / 2, 3)
+        
+        # Mantém a velocidade do cluster dentro dos limites do constants.py
+        vel_media_cluster = np.random.uniform(VELOCIDADE_MIN, VELOCIDADE_MAX, 3) * 0.5 
+        
+        # 2. Gerar as partículas ao redor do centro usando uma distribuição Normal (Gaussiana)
+        posicoes[inicio:fim] = np.random.normal(loc=centro_cluster, scale=dispersao_posicao, size=(n_particulas_aqui, 3))
+        
+        # 3. Gerar as velocidades das partículas ao redor da velocidade média do cluster
+        # Usamos uma dispersão pequena para que o cluster permaneça junto nos primeiros momentos
+        velocidades[inicio:fim] = np.random.normal(loc=vel_media_cluster, scale=dispersao_velocidade, size=(n_particulas_aqui, 3))
+        
+    return massas, posicoes, velocidades
+
 
 def desenhar_grafico_n_corpos(historico_posicoes, massas, titulo="Simulação N-Corpos"):
     """
