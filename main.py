@@ -1,6 +1,6 @@
 import time
 import multiprocessing as mp
-from utils import gerar_condicoes_iniciais, desenhar_grafico_n_corpos, calcular_tamanho_caixa_dinamico
+from utils import *
 from engines.cpu import simular_n_corpos_cpu
 from engines.gpu import simular_n_corpos_gpu, validar_energia_gpu
 from engines.multigpu import simular_n_corpos_multigpu
@@ -11,7 +11,7 @@ from constants import DELTA_T, PASSOS_TEMPO, EPSILON, G, MASSA_MIN, MASSA_MAX, V
 
 
 def main():
-    N_PARTICULAS = 2    # Aumentado para saturar a GPU (ex: 8192, 16384, 32768)
+    N_PARTICULAS = 3    # Aumentado para saturar a GPU (ex: 8192, 16384, 32768)
     TAMANHO_CAIXA = calcular_tamanho_caixa_dinamico(N_PARTICULAS, DENSIDADE_ALVO)
     np.random.seed(42)      # Seed fixa para resultados consistentes
 
@@ -37,8 +37,10 @@ def main():
     try:
         # Geração dos tensores (NumPy) de massas, posições e velocidades iniciais
         massas, posicoes, velocidades = gerar_condicoes_iniciais(
-            N_PARTICULAS, TAMANHO_CAIXA, MASSA_MIN, MASSA_MAX, VELOCIDADE_MIN,VELOCIDADE_MAX, 
+            N_PARTICULAS, tamanho_caixa=TAMANHO_CAIXA
             )
+        
+        #massas, posicoes, velocidades = gerar_condicoes_iniciais_clusters(N_PARTICULAS, tamanho_caixa=TAMANHO_CAIXA)
 
         # Criar cópias para CPU e GPU para garantir que ambos começam com as mesmas condições iniciais
         pos_para_cpu = posicoes.copy()
@@ -150,7 +152,7 @@ def main():
         print("="*80)
 
         # --- PROVA VISUAL (Matplotlib) ---
-        DESENHAR = False  # True para gerar gráficos
+        DESENHAR = True  # True para gerar gráficos
         if DESENHAR == True and not IGNORAR_CPU:
             print("\n-> A re-executar simulação na CPU para gerar o histórico de posições para o gráfico...")
             pos_para_grafico = posicoes.copy()

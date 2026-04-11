@@ -12,7 +12,7 @@ def calcular_tamanho_caixa_dinamico(N_particulas, densidade_alvo=0.002):
     return np.cbrt(N_particulas / densidade_alvo)
 
 
-def gerar_condicoes_iniciais(N, tamanho_caixa=100.0, massa_min=10.0, massa_max=50.0,velocidade_min=-0.5 ,velocidade_max=0.5):
+def gerar_condicoes_iniciais(N, tamanho_caixa, massa_min=MASSA_MIN, massa_max=MASSA_MAX,velocidade_min=VELOCIDADE_MIN ,velocidade_max=VELOCIDADE_MAX):
     """
     Gera as condições iniciais aleatórias para N partículas.
     Retorna arrays NumPy de massas, posições e velocidades (float32 para compatibilidade CUDA).
@@ -23,7 +23,7 @@ def gerar_condicoes_iniciais(N, tamanho_caixa=100.0, massa_min=10.0, massa_max=5
     
     return massas, posicoes, velocidades
 
-def gerar_condicoes_iniciais_clusters(N, num_clusters=2, tamanho_caixa=50.0, dispersao_posicao=10.0, dispersao_velocidade=0.01):
+def gerar_condicoes_iniciais_clusters(N, tamanho_caixa, dispersao_posicao=10.0, dispersao_velocidade=0.01, num_clusters=2):
     """
     Gera posições, velocidades e massas agrupadas em clusters (aglomerados).
     

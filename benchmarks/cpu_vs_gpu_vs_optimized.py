@@ -45,8 +45,8 @@ def executar_benchmark_single_gpu():
 
         np.random.seed(42) # Seed fixa para cada N ser consistente para reprodutibilidade
         massas, posicoes, velocidades = gerar_condicoes_iniciais(
-            N_PARTICULAS, TAMANHO_CAIXA, MASSA_MIN, MASSA_MAX, VELOCIDADE_MIN, VELOCIDADE_MAX
-        )
+            N_PARTICULAS, tamanho_caixa=TAMANHO_CAIXA
+            )
         
         energia_inicial = validar_energia_gpu(posicoes, velocidades, massas, G, EPSILON)
 
