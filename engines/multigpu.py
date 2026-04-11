@@ -1,7 +1,7 @@
 import multiprocessing as mp
 import numpy as np
 import time
-from utilidades import gerar_condicoes_iniciais
+from utils import gerar_condicoes_iniciais
 
 # Kernel exclusivo para Multi-GPU. 
 # Nota: Não importamos o pycuda globalmente para evitar o autoinit.

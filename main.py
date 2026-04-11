@@ -1,6 +1,6 @@
 import time
 import multiprocessing as mp
-from utilidades import gerar_condicoes_iniciais, desenhar_grafico_n_corpos, calcular_tamanho_caixa_dinamico
+from utils import gerar_condicoes_iniciais, desenhar_grafico_n_corpos, calcular_tamanho_caixa_dinamico
 from engines.cpu import simular_n_corpos_cpu
 from engines.gpu import simular_n_corpos_gpu, validar_energia_gpu
 from engines.multigpu import simular_n_corpos_multigpu
