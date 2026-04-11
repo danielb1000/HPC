@@ -2,7 +2,7 @@
 ![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-This project implements an N-Body simulation to benchmark and compare the performance of CPU (NumPy), single-GPU, and Multi-GPU architectures. It explores iterative optimizations on a single GPU (Fast Math, Shared Memory, Float4 Vectorization) and evaluates the scalability of parallelizing the workload across 4 GPUs using standard PCIe vs. NVLink/NVSwitch.
+This project implements an N-Body simulation to benchmark and compare the performance of CPU (NumPy), single-GPU, and Multi-GPU architectures. It explores iterative optimizations on a single GPU (Fast Math, Shared Memory, Float4 Vectorization) and evaluates the scalability of parallelizing the workload across multiple GPUs using standard PCIe vs. NVLink/NVSwitch.
 
 <!-- ## Key Findings
 * **Iterative GPU Optimization:** Upgrading from a naive GPU implementation to Shared Memory + Float4 Vectorization resulted in an **XX%** increase in processing speed.
@@ -27,7 +27,7 @@ This project implements an N-Body simulation to benchmark and compare the perfor
 pip install pycuda matplotlib numpy
 ```
 
-*(Note: `matplotlib` is used for generating the performance graphs and simulation visualizations).*
+*(`matplotlib` is used for generating the performance graphs and simulation visualizations).*
 
 ## Project Structure & Engines
 
@@ -42,9 +42,7 @@ The core simulation logic is divided into different engines located in the `/eng
 - **`multigpu.py`**: Distributed Multi-GPU implementation using standard PCIe communication.
 - **`nv4.py`**: Highly optimized Multi-GPU implementation leveraging NVLink/NVSwitch for direct Peer-to-Peer (P2P) memory access.
 
-## How to Run the Benchmarks
-
-To execute the benchmarks, run the following scripts from the project root:
+## Running the Benchmarks
 
 1. **Compare CPU with various Single-GPU optimizations:**
    ```bash
@@ -56,7 +54,7 @@ To execute the benchmarks, run the following scripts from the project root:
    python benchmarks/gpu_vs_pcie_nvlink.py
    ```
 
-3. **Run a comprehensive benchmark for a constant N across all implementations:**
+3. **Run simple benchmark for a constant N across all implementations:**
    ```bash
    python main.py
    ```
