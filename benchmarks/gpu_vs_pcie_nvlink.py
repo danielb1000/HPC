@@ -1,5 +1,10 @@
 import time
 import numpy as np
+import sys
+from pathlib import Path
+root_dir = Path(__file__).resolve().parent.parent
+sys.path.append(str(root_dir))
+current_dir = Path(__file__).parent
 import multiprocessing as mp
 import pycuda.driver as cuda
 from utilidades import (gerar_condicoes_iniciais, calcular_tamanho_caixa_dinamico, 
@@ -99,7 +104,7 @@ def executar_benchmark_multi_gpu():
             print(f" -> Concluído benchmark para N = {N_PARTICULAS} | Speedup Multi-GPU: {speedup_multi:.2f}x | Speedup NVLink: {speedup_nv4:.2f}x")
 
         # Gerar a tabela Typst usando a função de utilidade
-        gerar_tabela_typst_multi_gpu("benchmark_multigpu_performance.txt", resultados_tabela)
+        gerar_tabela_typst_multi_gpu(str(current_dir / 'benchmark_multigpu_performance.txt'), resultados_tabela)
         
         # Gerar o gráfico de performance
         series_para_plotar = {
@@ -107,7 +112,9 @@ def executar_benchmark_multi_gpu():
             'Multi-GPU (PCIe)': tempos_para_grafico['multigpu'],
             'Multi-GPU (NVLink)': tempos_para_grafico['nv4']
         }
-        gerar_grafico_tempo('benchmark_multigpu_performance.png', lista_N, log_y=False, log_x=False, **series_para_plotar)
+        
+        output_file = current_dir / 'benchmark_multigpu_performance.png'
+        gerar_grafico_tempo(str(output_file), lista_N, log_y=False, log_x=False, **series_para_plotar)
         
     finally:
         ctx.pop()

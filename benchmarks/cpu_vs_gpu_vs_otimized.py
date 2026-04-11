@@ -1,5 +1,10 @@
 import time
 import numpy as np
+import sys
+from pathlib import Path
+root_dir = Path(__file__).resolve().parent.parent
+sys.path.append(str(root_dir))
+current_dir = Path(__file__).parent
 from utilidades import (gerar_condicoes_iniciais, gerar_grafico_tempo, 
                         calcular_tamanho_caixa_dinamico, gerar_tabela_typst_single_gpu)
 from simulacao_cpu import simular_n_corpos_cpu
@@ -89,7 +94,9 @@ def executar_benchmark_single_gpu():
         print(f" -> Concluído benchmark para N = {N_PARTICULAS}")
 
     # Gerar a tabela Typst usando a função de utilidade
-    gerar_tabela_typst_single_gpu("benchmark_CPU_vs_GPU_vs_GPU_Optimized.txt", resultados_tabela)
+    
+    gerar_tabela_typst_single_gpu(str(current_dir / "benchmark_CPU_vs_GPU_vs_GPU_Optimized.txt"), resultados_tabela)
+
 
     # Gerar o gráfico de performance
     series_para_plotar = {'CPU': tempos_para_grafico['cpu']}
@@ -98,7 +105,7 @@ def executar_benchmark_single_gpu():
     if 'shared_mem_float4' in tempos_para_grafico:
         series_para_plotar['GPU Optimized'] = tempos_para_grafico['shared_mem_float4']
         
-    gerar_grafico_tempo('benchmark_CPU_vs_GPU_vs_GPU_Optimized.png', lista_N, log_y=True, log_x=False, **series_para_plotar)
+    gerar_grafico_tempo(str(current_dir /'benchmark_CPU_vs_GPU_vs_GPU_Optimized.png'), lista_N, log_y=True, log_x=False, **series_para_plotar)
 
 
 if __name__ == "__main__":
