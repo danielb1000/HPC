@@ -1,51 +1,62 @@
-# Simulação N-Corpos (CPU vs GPU)
+# N-Body Simulation: CPU vs GPU & Multi-GPU Optimization
+![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-Este repositório contém uma implementação em Python de uma simulação física de N-Corpos (interação gravitacional) focada em High Performance Computing (HPC). O objetivo principal é demonstrar e comparar a performance entre a execução tradicional no processador (CPU) e a execução massivamente paralela acelerada por hardware na gráfica (GPU), evoluindo até arquiteturas Multi-GPU com suporte NVLink.
+This project implements an N-Body simulation to benchmark and compare the performance of CPU (NumPy), single-GPU, and Multi-GPU architectures. It explores iterative optimizations on a single GPU (Fast Math, Shared Memory, Float4 Vectorization) and evaluates the scalability of parallelizing the workload across 4 GPUs using standard PCIe vs. NVLink/NVSwitch.
 
-## Estrutura do Projeto e Relação entre Ficheiros
+<!-- ## Key Findings
+* **Iterative GPU Optimization:** Upgrading from a naive GPU implementation to Shared Memory + Float4 Vectorization resulted in an **XX%** increase in processing speed.
+* **NVLink vs PCIe:** Distributing the workload across 4 GPUs using NVLink/NVSwitch scaled almost linearly, outperforming standard PCIe peer-to-peer memory transfers by **XXx**.
+* **CPU vs GPU:** The fully optimized single-GPU implementation processed the simulation **XXx** faster than the baseline NumPy CPU engine. -->
 
-O projeto está desenhado de forma modular, separando a lógica de simulação em CPU, várias etapas de otimização em GPU (Single e Multi-GPU) e funções utilitárias.
+## Hardware Tested On
+- **GPUs:** NVIDIA HGX A100 (4x A100 SXM4 80GB) with NVLink/NVSwitch interconnection.
+- **CPUs:** AMD EPYC 7453.
 
-### 🚀 Módulos Principais
+## Benchmark Results
 
-* **`main.py`**
-  O ponto de entrada principal (orquestrador e de *benchmarking*). Gera as condições iniciais e corre sucessivas simulações progressivamente mais otimizadas (CPU -> GPU Naive -> Shared Memory -> Float4 -> Multi-GPU -> NVLink), validando resultados e calculando *speedups*.
-* **`simulacao_cpu.py`**
-  Implementação no CPU utilizando **NumPy** com operações vetorizadas e *broadcasting* para otimizar o cálculo de complexidade O(N²), evitando os lentos ciclos `for` em Python.
-* **`simulacao_gpu.py`**
-  Implementações baseadas em **PyCUDA** para uma única GPU. Demonstra a evolução das otimizações na VRAM: baseline (*Naive*), uso de funções intrínsecas (*Fast Math*), aproveitamento de memória partilhada (*Shared Memory/Tiling*) e vetorização de leituras de memória (*Float4*).
-* **`simulacao_multigpu.py`**
-  Implementação distribuída para múltiplas placas gráficas usando `multiprocessing`. Divide o universo de partículas pelas GPUs disponíveis, sincronizando os dados através de *Shared Memory* no CPU (Host) a cada passo de tempo.
-* **`simulacao_nv4.py`**
-  Implementação Multi-GPU avançada que tira partido da tecnologia **NVLink/NVSwitch**. Em vez de usar a RAM do CPU como ponte intermediária, as GPUs partilham ponteiros e acedem diretamente à VRAM umas das outras (P2P - *Device-to-Device*), eliminando drásticamente o gargalo do barramento PCIe.
+### CPU vs Single-GPU vs Optimized Single-GPU
+![CPU vs GPU vs Optimized GPU](benchmarks/benchmark_CPU_vs_GPU_vs_GPU_Optimized.png)
 
-### 🛠️ Utilitários e Diagnóstico
+### Single-GPU vs Multi-GPU (PCIe) vs Multi-GPU (NVLink)
+![Multi-GPU Performance](benchmarks/benchmark_multigpu_performance.png)
 
-* **`utilidades.py`**
-  Fornece funções auxiliares partilhadas:
-  - `gerar_condicoes_iniciais`: Inicializa matrizes de massas, posições e velocidades aleatórias.
-  - `desenhar_grafico_n_corpos`: Pega no histórico de posições e usa o *Matplotlib* para projetar o rasto das partículas num gráfico 2D.
-* **`teste_servidor_gpu.py`**
-  Script de diagnóstico concebido para testar a inicialização concorrente, gestão de contextos PyCUDA e a alocação de memória em servidores HPC com múltiplas GPUs.
+## Installation
 
-### 📊 Benchmarks e Resultados
+```bash
+pip install pycuda matplotlib numpy
+```
 
-A execução de testes e comparações de performance é orquestrada centralmente:
+*(Note: `matplotlib` is used for generating the performance graphs and simulation visualizations).*
 
-* **`main.py` (Relatórios de Terminal)**
-  Emite as métricas essenciais do HPC no final da simulação: Tempos de execução para todas as implementações, *Speedups* iterativos (CPU vs GPU Naive, Multi-GPU vs NVLink), monitorização do Desvio Numérico entre dispositivos, e o cálculo de erro da Conservação de Energia Física.
-* **Geração de Gráficos (Logs Visuais `.png`)**
-  - `[N]_corpos_orbitas.png`: É guardado automaticamente na raiz (gerado através das ferramentas no `utilidades.py`), espelhando a renderização 2D final das trajetórias caso a flag `DESENHAR` esteja ativa.
-  - `comparacao_integradores.png`: Gerado pelo ficheiro de estudo `euler_vs_verlet.py`, provando numéricamente a estabilidade do método Velocity Verlet face a Euler puro.
-* **Exportação para Relatórios Académicos (Typst)**
-  - **`benchmark_typst.py`**: Script focado na evolução das otimizações para uma única GPU. Executa testes de escalabilidade (N=2 até 32.768), comparando os tempos de execução do CPU face às 4 variantes construídas (Naive, Fast Math, Shared Memory e Float4). Exporta a tabela final com os *Speedups* formatados nativamente para Typst (`tabela_typst.txt`).
-  - **`benchmark_multigpu_typst.py`**: Teste de *stress* para HPC extremo (N=16.384 até mais de 4 Milhões de corpos). Avalia o teto arquitetural medindo o desempenho entre a melhor versão Single-GPU, Multi-GPU padrão (gargalo PCIe) e Multi-GPU via NVLink P2P, exportando diretamente a tabela de resultados para Typst (`tabela_multigpu_typst.txt`).
+## Project Structure & Engines
 
-### 🤓 Ficheiros de Estudo e Validação
+The core simulation logic is divided into different engines located in the `/engines/` directory:
 
-* **`learning_cuda.py`**
-  Um script monolítico de estudo que serviu para entender o funcionamento do PyCUDA. Contém toda a lógica e os *Kernels* em C++ num só ficheiro. Foi a base da qual o código de produção (`simulacao_gpu.py`) foi extraído.
-* **`euler_vs_verlet.py`**
-  Um script educativo que explica (visualmente) o problema de degradação orbital na integração numérica. Compara os métodos de *Euler* (diverge), *Euler-Cromer* (estável) e *Velocity Verlet* (muito preciso), justificando o uso do Verlet no projeto principal.
-* **`simple2body.py`**
-  Um script simples de validação (teste unitário) que calcula à mão as forças gravitacionais entre apenas 2 corpos em 3D, para garantir que as equações base da aceleração estão perfeitamente corretas antes de escalar para N corpos.
+- **`cpu.py`**: Baseline NumPy implementation running on the CPU.
+- **`gpu.py`**: Single-GPU implementations featuring progressive optimizations:
+   - *Naive*: Direct PyCUDA implementation.
+   - *Math Intrinsics*: Replacing standard `pow()` functions with hardware-accelerated `rsqrtf()` (fast reciprocal square root) for force calculations.
+   - *Shared Memory (includes Intrinsics)*: Tiling approach to reduce global memory accesses.
+   - *Shared Mem + Float4 (includes Intrinsics)*: Vectorized memory accesses for maximum bandwidth utilization.
+- **`multigpu.py`**: Distributed Multi-GPU implementation using standard PCIe communication.
+- **`nv4.py`**: Highly optimized Multi-GPU implementation leveraging NVLink/NVSwitch for direct Peer-to-Peer (P2P) memory access.
+
+## How to Run the Benchmarks
+
+To execute the benchmarks, run the following scripts from the project root:
+
+1. **Compare CPU with various Single-GPU optimizations:**
+   ```bash
+   python benchmarks/cpu_vs_gpu_vs_optimized.py
+   ```
+
+2. **Test Multi-GPU scalability (PCIe vs NVLink):**
+   ```bash
+   python benchmarks/gpu_vs_pcie_nvlink.py
+   ```
+
+3. **Run a comprehensive benchmark for a constant N across all implementations:**
+   ```bash
+   python main.py
+   ```
