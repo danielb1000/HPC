@@ -7,8 +7,8 @@ sys.path.append(str(root_dir))
 current_dir = Path(__file__).parent
 from utilidades import (gerar_condicoes_iniciais, gerar_grafico_tempo, 
                         calcular_tamanho_caixa_dinamico, gerar_tabela_typst_single_gpu)
-from simulacao_cpu import simular_n_corpos_cpu
-from simulacao_gpu import simular_n_corpos_gpu, validar_energia_gpu
+from engines.cpu import simular_n_corpos_cpu
+from engines.gpu import simular_n_corpos_gpu, validar_energia_gpu
 import pycuda.autoinit
 
 #

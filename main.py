@@ -1,10 +1,10 @@
 import time
 import multiprocessing as mp
 from utilidades import gerar_condicoes_iniciais, desenhar_grafico_n_corpos, calcular_tamanho_caixa_dinamico
-from simulacao_cpu import simular_n_corpos_cpu
-from simulacao_gpu import simular_n_corpos_gpu, validar_energia_gpu
-from simulacao_multigpu import simular_n_corpos_multigpu
-from simulacao_nv4 import simular_n_corpos_nv4
+from engines.cpu import simular_n_corpos_cpu
+from engines.gpu import simular_n_corpos_gpu, validar_energia_gpu
+from engines.multigpu import simular_n_corpos_multigpu
+from engines.nv4 import simular_n_corpos_nv4
 import numpy as np
 import pycuda.driver as cuda
 from constants import DELTA_T, PASSOS_TEMPO, EPSILON, G, MASSA_MIN, MASSA_MAX, VELOCIDADE_MIN, VELOCIDADE_MAX, DENSIDADE_ALVO

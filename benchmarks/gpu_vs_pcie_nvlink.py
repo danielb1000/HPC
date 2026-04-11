@@ -10,9 +10,9 @@ import pycuda.driver as cuda
 from utilidades import (gerar_condicoes_iniciais, calcular_tamanho_caixa_dinamico, 
                         gerar_tabela_typst_multi_gpu,
                         gerar_grafico_tempo)
-from simulacao_gpu import simular_n_corpos_gpu, validar_energia_gpu
-from simulacao_multigpu import simular_n_corpos_multigpu
-from simulacao_nv4 import simular_n_corpos_nv4
+from engines.gpu import simular_n_corpos_gpu, validar_energia_gpu
+from engines.multigpu import simular_n_corpos_multigpu
+from engines.nv4 import simular_n_corpos_nv4
 
 #
 # Benchmark exclusivo para testar a escalabilidade Multi-GPU em escalas de HPC
