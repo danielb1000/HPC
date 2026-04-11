@@ -7,7 +7,7 @@ sys.path.append(str(root_dir))
 current_dir = Path(__file__).parent
 import multiprocessing as mp
 import pycuda.driver as cuda
-from utilidades import (gerar_condicoes_iniciais, calcular_tamanho_caixa_dinamico, 
+from utils import (gerar_condicoes_iniciais, calcular_tamanho_caixa_dinamico, 
                         gerar_tabela_typst_multi_gpu,
                         gerar_grafico_tempo)
 from engines.gpu import simular_n_corpos_gpu, validar_energia_gpu
