@@ -78,25 +78,30 @@ def main():
 
         # -- 6. GPU SIMULAÇÃO (MULTI-GPU) --
         tempo_multigpu = None
-        if num_gpus > 1:
+        # Ignorar se houver menos partículas do que GPUs, pois a distribuição seria ineficiente
+        if num_gpus > 1 and N_PARTICULAS >= num_gpus:
             print(f"[6/7] A executar na GPU (Multi-GPU Distribuído - {num_gpus} GPUs)...")
             # Para o script multi-gpu correr em segurança, ele não partilha este contexto CUDA principal. 
             # Ele cria os próprios contextos nos workers isolados.
             pos_final_multigpu, vel_final_multigpu, tempo_multigpu = simular_n_corpos_multigpu(
                 posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, num_gpus_ativas=num_gpus
             )
-        else:
-            print("[6/7] Ignorado. Sistema tem apenas 1 GPU.")
+        elif num_gpus <= 1:
+            print("[6/7] Ignorado. Sistema tem apenas 1 GPU ou menos.")
+        else: # N_PARTICULAS < num_gpus
+            print(f"[6/7] Ignorado. N_PARTICULAS ({N_PARTICULAS}) é menor que o número de GPUs ({num_gpus}).")
 
         # -- 7. GPU SIMULAÇÃO (NVLINK / NVSWITCH P2P) --
         tempo_nv4 = None
-        if num_gpus > 1:
+        if num_gpus > 1 and N_PARTICULAS >= num_gpus:
             print(f"[7/7] A executar na GPU (NVLink/NVSwitch P2P - {num_gpus} GPUs)...")
             pos_final_nv4, vel_final_nv4, tempo_nv4 = simular_n_corpos_nv4(
                 posicoes.copy(), velocidades.copy(), massas, PASSOS_TEMPO, DELTA_T, G, EPSILON, num_gpus_ativas=num_gpus
             )
-        else:
-            print("[7/7] Ignorado. Sistema tem apenas 1 GPU.")
+        elif num_gpus <= 1:
+            print("[7/7] Ignorado. Sistema tem apenas 1 GPU ou menos.")
+        else: # N_PARTICULAS < num_gpus
+            print(f"[7/7] Ignorado. N_PARTICULAS ({N_PARTICULAS}) é menor que o número de GPUs ({num_gpus}).")
 
         # VALIDAÇÃO MATEMÁTICA E RESULTADOS
         # Se não houver CPU, usamos a versão Naive como a fonte da verdade para desvios numéricos
@@ -125,7 +130,7 @@ def main():
             print(f"  - Speedup vs CPU         : {spd(tempo)}")
             print(f"  - Desvio numérico vs {ref_nome} : {desvio:.6f}")
         
-        if num_gpus > 1:
+        if tempo_multigpu is not None: # Verifica se a simulação multi-GPU foi executada
             desvio_multigpu = np.max(np.abs(pos_ref - pos_final_multigpu))
             print("-" * 80)
             print(f"MULTI-GPU ({num_gpus} Placas):")
@@ -134,7 +139,7 @@ def main():
             print(f"  - Speedup vs GPU Float4  : {tempo_gpu_vec / tempo_multigpu:.2f}x mais rápido")
             print(f"  - Desvio numérico vs {ref_nome} : {desvio_multigpu:.6f}")
             
-        if num_gpus > 1 and tempo_nv4 is not None:
+        if tempo_nv4 is not None: # Verifica se a simulação NVLink foi executada
             desvio_nv4 = np.max(np.abs(pos_ref - pos_final_nv4))
             print("-" * 80)
             print(f"MULTI-GPU NVLINK/NVSWITCH ({num_gpus} Placas P2P):")
