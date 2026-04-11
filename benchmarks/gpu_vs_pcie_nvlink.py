@@ -9,7 +9,7 @@ import multiprocessing as mp
 import pycuda.driver as cuda
 from utils import (gerar_condicoes_iniciais, calcular_tamanho_caixa_dinamico, 
                         gerar_tabela_typst_multi_gpu,
-                        gerar_grafico_tempo)
+                        gerar_grafico_speedup)
 from engines.gpu import simular_n_corpos_gpu, validar_energia_gpu
 from engines.multigpu import simular_n_corpos_multigpu
 from engines.nv4 import simular_n_corpos_nv4
@@ -44,8 +44,8 @@ def executar_benchmark_multi_gpu():
     # Lista para armazenar os resultados de forma estruturada para a tabela
     resultados_tabela = []
     
-    # Dicionário para armazenar listas de tempos para o gráfico
-    tempos_para_grafico = {'1gpu': [], 'multigpu': [], 'nv4': []}
+    # Dicionário para armazenar listas de speedups para o gráfico
+    speedups_para_grafico = {'multigpu': [], 'nv4': []}
     
     try:
         for N_PARTICULAS in lista_N:
@@ -96,25 +96,23 @@ def executar_benchmark_multi_gpu():
                 'erro_energia': erro_energia
             })
             
-            # Adicionar tempos às listas para o gráfico
-            tempos_para_grafico['1gpu'].append(tempos_n['1gpu'])
-            tempos_para_grafico['multigpu'].append(tempos_n['multigpu'])
-            tempos_para_grafico['nv4'].append(tempos_n['nv4'])
+            # Adicionar speedups às listas para o gráfico
+            speedups_para_grafico['multigpu'].append(speedup_multi)
+            speedups_para_grafico['nv4'].append(speedup_nv4)
             
             print(f" -> Concluído benchmark para N = {N_PARTICULAS} | Speedup Multi-GPU: {speedup_multi:.2f}x | Speedup NVLink: {speedup_nv4:.2f}x")
 
         # Gerar a tabela Typst usando a função de utilidade
         gerar_tabela_typst_multi_gpu(str(current_dir / 'benchmark_multigpu_performance.txt'), resultados_tabela)
         
-        # Gerar o gráfico de performance
+        # Gerar o gráfico de speedup
         series_para_plotar = {
-            '1-GPU (Float4)': tempos_para_grafico['1gpu'],
-            'Multi-GPU (PCIe)': tempos_para_grafico['multigpu'],
-            'Multi-GPU (NVLink)': tempos_para_grafico['nv4']
+            'Multi-GPU (PCIe)': speedups_para_grafico['multigpu'],
+            'Multi-GPU (NVLink)': speedups_para_grafico['nv4']
         }
         
         output_file = current_dir / 'benchmark_multigpu_performance.png'
-        gerar_grafico_tempo(str(output_file), lista_N, log_y=False, log_x=False, **series_para_plotar)
+        gerar_grafico_speedup(str(output_file), lista_N, log_x=True, **series_para_plotar)
         
     finally:
         ctx.pop()

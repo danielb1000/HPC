@@ -15,10 +15,10 @@ This project implements an N-Body simulation to benchmark and compare the perfor
 
 ## Benchmark Results
 
-### CPU vs Single-GPU vs Optimized Single-GPU
+### Execution times: CPU vs Single-GPU vs Optimized Single-GPU
 ![CPU vs GPU vs Optimized GPU](benchmarks/benchmark_CPU_vs_GPU_vs_GPU_Optimized.png)
 
-### Single-GPU vs Multi-GPU (PCIe) vs Multi-GPU (NVLink)
+### Speedup: Optimized Single-GPU (Baseline) vs PCIe vs NVLink
 ![Multi-GPU Performance](benchmarks/benchmark_multigpu_performance.png)
 
 ## Installation

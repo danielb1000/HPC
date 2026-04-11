@@ -112,14 +112,41 @@ def gerar_grafico_tempo(nome_ficheiro, lista_n, **series_dados):
         plt.yscale('log', base=10)
     if log_x:
         plt.xscale('log', base=2)
-    plt.xlabel('Número de Partículas (N)')
-    plt.ylabel('Tempo de Execução (s)')
-    plt.title('Tempo de Execução vs Número de Partículas')
+    plt.xlabel('N-Bodies (N)')
+    plt.ylabel('Execution Time (s)')
+    plt.title('Execution Time vs N-Bodies')
     plt.legend()
     plt.grid(True, which="both", ls="--", alpha=0.5)
     plt.tight_layout()
     plt.savefig(nome_ficheiro, dpi=300)
     print(f"Gráfico gerado e guardado como '{nome_ficheiro}'")
+
+def gerar_grafico_speedup(nome_ficheiro, lista_n, **series_dados):
+    """
+    Gera um gráfico de speedup comparativo.
+    Adiciona uma linha horizontal em y=1 para representar a performance base (1-GPU).
+    """
+    plt.figure(figsize=(10, 6))
+
+    log_x = series_dados.pop('log_x', True)
+    
+    # Desenhar baseline 1-GPU
+    plt.axhline(y=1.0, color='red', linestyle='--', linewidth=2, label='1-GPU Optimized (Baseline)')
+
+    for label, speedups in series_dados.items():
+        plt.plot(lista_n, speedups, marker='o', label=label)
+
+    if log_x:
+        plt.xscale('log', base=2)
+        
+    plt.xlabel('Number of Particles (N)')
+    plt.ylabel('Speedup (x)')
+    plt.title('Multi-GPU Scalability: Speedup vs 1-GPU')
+    plt.legend()
+    plt.grid(True, which="both", ls="--", alpha=0.5)
+    plt.tight_layout()
+    plt.savefig(nome_ficheiro, dpi=300)
+    print(f"Gráfico de speedup gerado e guardado como '{nome_ficheiro}'")
 
 def gerar_tabela_typst_single_gpu(nome_ficheiro, resultados):
     """
